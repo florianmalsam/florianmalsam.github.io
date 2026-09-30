@@ -45,11 +45,19 @@ function showView(view, { pushHistory = true } = {}) {
 }
 
 document.addEventListener('click', (event) => {
-    const control = event.target.closest('[data-view]');
+    const control = event.target.closest('[data-view], [data-card-view]');
     if (!control) return;
 
     event.preventDefault();
-    showView(control.dataset.view);
+    showView(control.dataset.view || control.dataset.cardView);
+});
+
+document.addEventListener('keydown', (event) => {
+    const card = event.target.closest('[data-card-view]');
+    if (!card || !['Enter', ' '].includes(event.key)) return;
+
+    event.preventDefault();
+    showView(card.dataset.cardView);
 });
 
 window.addEventListener('popstate', () => {

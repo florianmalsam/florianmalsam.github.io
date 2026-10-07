@@ -11,14 +11,14 @@ test('Cloud-Schema schützt Datenzugriff, Schreibrechte und Revisionen', async (
       create role anon;
       create role authenticated;
       create schema auth;
-      create table auth.users (id uuid primary key);
+      create table auth.users (id uuid primary key, email text unique);
       create function auth.uid() returns uuid language sql stable as
         'select nullif(current_setting(''request.jwt.claim.sub'', true), '''')::uuid';
       grant usage on schema auth to authenticated, anon;
       grant execute on function auth.uid() to authenticated, anon;
       insert into auth.users values
-        ('00000000-0000-0000-0000-000000000001'),
-        ('00000000-0000-0000-0000-000000000002');
+        ('00000000-0000-0000-0000-000000000001', 'owner@example.com'),
+        ('00000000-0000-0000-0000-000000000002', 'xs_esl@web.de');
     `);
     await database.exec(await readFile(new URL('../supabase/schema.sql', import.meta.url), 'utf8'));
     await database.exec('set role anon');
@@ -35,8 +35,15 @@ test('Cloud-Schema schützt Datenzugriff, Schreibrechte und Revisionen', async (
     assert.equal(Number(saved.rows[0].revision), 2);
     await assert.rejects(database.query('select public.save_team_state($1::jsonb, 1)', [JSON.stringify(exampleData())]), /another device/);
     await assert.rejects(database.query('select public.save_team_state($1::jsonb, 2)', [JSON.stringify({ ...exampleData(), rate: -1 })]), /Invalid rate/);
-    await database.exec("set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002'");
-    assert.equal((await database.query('select * from public.team_state')).rows.length, 0);
+    await database.exec('reset role');
+    await database.exec(await readFile(new URL('../supabase/readonly-access.sql', import.meta.url), 'utf8'));
+    await database.exec("set role authenticated; set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002'");
+    const readerView = await database.query('select owner_id, payload from public.team_state');
+    assert.equal(readerView.rows.length, 1);
+    assert.equal(readerView.rows[0].owner_id, '00000000-0000-0000-0000-000000000001');
+    assert.equal((await database.query('select * from public.team_readers')).rows.length, 1);
+    await assert.rejects(database.query('select public.save_team_state($1::jsonb, 0)', [JSON.stringify(exampleData())]), /Read-only access/);
+    await assert.rejects(database.query('select public.save_team_state($1::jsonb, 2)', [JSON.stringify(exampleData())]), /Read-only access/);
     await database.exec("set request.jwt.claim.sub = ''");
     await assert.rejects(database.query('select public.save_team_state($1::jsonb, 0)', [JSON.stringify(exampleData())]), /Authentication required/);
   } finally { await database.close(); }

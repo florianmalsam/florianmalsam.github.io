@@ -5,13 +5,37 @@ create table if not exists public.team_state (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.team_readers (
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  reader_id uuid not null references auth.users(id) on delete cascade,
+  primary key (owner_id, reader_id),
+  check (owner_id <> reader_id)
+);
+
 alter table public.team_state enable row level security;
+alter table public.team_readers enable row level security;
 revoke all on public.team_state from anon, authenticated;
+revoke all on public.team_readers from anon, authenticated;
 grant select on public.team_state to authenticated;
+grant select on public.team_readers to authenticated;
 
 drop policy if exists "Read own team" on public.team_state;
-create policy "Read own team" on public.team_state
-  for select to authenticated using (owner_id = (select auth.uid()));
+drop policy if exists "Read owned or shared team" on public.team_state;
+create policy "Read owned or shared team" on public.team_state
+  for select to authenticated using (
+    owner_id = (select auth.uid())
+    or exists (
+      select 1 from public.team_readers
+      where team_readers.owner_id = team_state.owner_id
+        and team_readers.reader_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists "Read own reader grants" on public.team_readers;
+create policy "Read own reader grants" on public.team_readers
+  for select to authenticated using (
+    reader_id = (select auth.uid()) or owner_id = (select auth.uid())
+  );
 
 create or replace function public.save_team_state(new_payload jsonb, expected_revision bigint)
 returns bigint
@@ -25,6 +49,9 @@ declare
 begin
   if current_owner is null then
     raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.team_readers where reader_id = current_owner) then
+    raise exception 'Read-only access cannot save team data' using errcode = '42501';
   end if;
   if expected_revision is null or expected_revision < 0
     or new_payload is null

@@ -121,6 +121,9 @@ input::placeholder { color: #7891b5; }
 .avatar-1 { background: #e8f1ff; color: #46658f; }
 .avatar-2 { background: #e3efff; color: #1f66d4; }
 .avatar-3 { background: #edf5ff; color: #7499c9; }
+.score-help-label { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.score-help { width: 18px; height: 18px; padding: 0; color: #6f89b0; vertical-align: middle; }
+.score-help:hover, .score-help:focus-visible { color: #2f7df4; background: #dceaff; }
 .roster-cell { display: flex; align-items: center; justify-content: center; }
 .check-toggle { position: relative; width: 28px; height: 28px; cursor: pointer; }
 .check-toggle.is-disabled { cursor: not-allowed; opacity: .55; }

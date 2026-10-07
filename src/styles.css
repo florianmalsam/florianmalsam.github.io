@@ -121,9 +121,7 @@ input::placeholder { color: #7891b5; }
 .player-cell > div { min-width: 0; }
 .player-cell > div > span { display: block; font-size: 10px; color: #46658f; margin-top: 5px; }
 .avatar { width: 35px; height: 35px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 600; color: #2f7df4; background: #dceaff; }
-.avatar-1 { background: #e8f1ff; color: #46658f; }
-.avatar-2 { background: #e3efff; color: #1f66d4; }
-.avatar-3 { background: #edf5ff; color: #7499c9; }
+.avatar-1, .avatar-2, .avatar-3 { background: #dceaff; color: #2f7df4; }
 .score-help-label { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 .score-help { width: 18px; height: 18px; padding: 0; color: #6f89b0; vertical-align: middle; }
 .score-help:hover, .score-help:focus-visible { color: #2f7df4; background: #dceaff; }

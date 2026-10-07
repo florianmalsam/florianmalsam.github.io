@@ -108,7 +108,7 @@ h3 .count-badge { margin-left: 7px; vertical-align: middle; font-size: 10px; }
 input::placeholder { color: #7891b5; }
 .table-toolbar select { height: 36px; border: 1px solid #c9dcf7; border-radius: 5px; background: white; font-size: 11px; padding: 0 10px; color: #46658f; max-width: 160px; }
 .roster-counter { margin-left: auto; color: #7891b5; font-size: 10px; }
-.roster-table-head, .roster-row { display: grid; grid-template-columns: minmax(128px, 1fr) 66px 72px 96px repeat(4, 91px) 32px; align-items: center; gap: 5px; }
+.roster-table-head, .roster-row { display: grid; grid-template-columns: minmax(128px, 1fr) 66px 72px 96px repeat(4, 91px) 72px 32px; align-items: center; gap: 5px; }
 .roster-table-head { background: #e5efff; padding: 14px 14px; border-top: 1px solid #c9dcf7; border-bottom: 1px solid #c9dcf7; color: #46658f; font-size: 11px; }
 .roster-table-head > span:not(:first-child) { text-align: center; }
 .roster-row { padding: 17px 14px; border-bottom: 1px solid #dce8f8; background: #ffffffb8; min-height: 82px; }
@@ -131,6 +131,7 @@ input::placeholder { color: #7891b5; }
 .check-toggle input:focus-visible + span { outline: 2px solid #8bc4ff; outline-offset: 3px; }
 .check-empty { width: 7px; height: 1px; background: #b8cdea; }
 .km-input { display: flex; align-items: center; width: 83px; height: 31px; gap: 2px; border: 1px solid #c9dcf7; border-radius: 4px; background: white; padding: 0 8px; }
+.extra-input { display: flex; align-items: center; width: 60px; height: 31px; border: 1px solid #c9dcf7; border-radius: 4px; background: white; padding: 0 6px; }
 .number-input { width: 100%; min-width: 0; color: #46658f; border: 0; background: transparent; text-align: center; font-size: 12px; font-weight: 500; padding: 0; -moz-appearance: textfield; }
 .number-input::-webkit-inner-spin-button, .number-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .km-input:has(input:disabled) { background: #f5f8fd; border-color: #e5effb; }
@@ -177,7 +178,7 @@ input::placeholder { color: #7891b5; }
 .score-control label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .score-control input { width: 42px; height: 28px; background: white; border: 1px solid #c9dcf7; border-radius: 4px; font-size: 12px; }
 .stats-scroll { overflow-x: auto; }
-.stats-table { border-collapse: collapse; width: 100%; min-width: 1040px; text-align: center; font-size: 12px; }
+.stats-table { border-collapse: collapse; width: 100%; min-width: 1120px; text-align: center; font-size: 12px; }
 .stats-table th { background: #e5efff; color: #46658f; font-size: 11px; font-weight: 500; padding: 15px 10px; border-block: 1px solid #c9dcf7; }
 .stats-table td { padding: 19px 10px; color: #46658f; border-bottom: 1px solid #dce8f8; }
 .stats-table th:first-child, .stats-table td:first-child { text-align: left; padding-left: 17px; }
@@ -223,7 +224,7 @@ input::placeholder { color: #7891b5; }
   .match-summary > div { gap: 8px; padding-inline: 12px; }
   .summary-icon { width: 33px; height: 33px; }
   .match-summary > div > span > span { font-size: 10px; }
-  .roster-table-head, .roster-row { grid-template-columns: minmax(107px, 1fr) 52px 57px 79px repeat(4, 76px) 25px; gap: 2px; padding-inline: 8px; }
+  .roster-table-head, .roster-row { grid-template-columns: minmax(107px, 1fr) 52px 57px 79px repeat(4, 76px) 58px 25px; gap: 2px; padding-inline: 8px; }
   .stepper { width: 70px; }
   .stepper button { width: 20px; }
   .km-input { width: 70px; }
@@ -243,7 +244,7 @@ input::placeholder { color: #7891b5; }
   .match-summary { gap: 20px 0; grid-template-columns: repeat(2, 1fr); }
   .match-summary > div:nth-child(3) { padding-left: 0; }
   .match-summary > div:nth-child(2) { border: 0; }
-  .roster-table-head, .roster-row { grid-template-columns: minmax(92px, 1fr) 43px 45px 68px repeat(4, 56px) 24px; }
+  .roster-table-head, .roster-row { grid-template-columns: minmax(92px, 1fr) 43px 45px 68px repeat(4, 52px) 52px 24px; }
   .stepper { width: 58px; }
   .stepper button { width: 17px; }
   .km-input { width: 58px; padding-inline: 4px; }
@@ -308,6 +309,8 @@ input::placeholder { color: #7891b5; }
   .roster-cell::before { content: attr(data-label); font-size: 11px; color: #46658f; text-align: center; }
   .checkbox-cell { grid-column: span 2; }
   .km-cell { grid-column: span 2; }
+  .extra-cell { grid-column: span 2; }
+  .extra-input { width: 78px; }
   .duty-cell { grid-column: span 2; }
   .stepper { width: 87px; height: 32px; }
   .stepper button { width: 25px; }

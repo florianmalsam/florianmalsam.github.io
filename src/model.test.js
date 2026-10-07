@@ -30,6 +30,12 @@ test('Neue Spieler und Dienste ohne Teilnahme aktualisieren die Statistik', () =
   assert.equal(stats.table, 1);
 });
 
+test('Extra-Punkte werden als nichtnegative ganze Zahlen validiert', () => {
+  const state = exampleData();
+  assert.throws(() => updateEntry(state, 'ST01', 'P1', { extra: 1.5 }), /Extra-Punkte/);
+  assert.throws(() => updateEntry(state, 'ST01', 'P1', { extra: -1 }), /Extra-Punkte/);
+});
+
 test('Nur Fahrer haben Kilometer, Dienste bleiben nichtnegative ganze Zahlen', () => {
   const state = updateEntry(exampleData(), 'ST01', 'P1', { drove: false });
   assert.equal(state.entries[0].km, 0);
@@ -59,17 +65,17 @@ test('Geänderter Kilometersatz wird unmittelbar berücksichtigt', () => {
 test('SOLL wird pro Spieltag aus Team-Dienstpunkten je gespielter Teilnahme berechnet', () => {
   const state = exampleData();
   const [anna, ben, clara, david] = statistics(state);
-  assert.equal(anna.scoreIst, 4);
-  assert.ok(Math.abs(anna.scoreSoll - 49 / 12) < 1e-10);
-  assert.equal(ben.scoreIst, 5);
-  assert.ok(Math.abs(ben.scoreSoll - 49 / 12) < 1e-10);
-  assert.equal(clara.scoreSoll, 1.75);
-  assert.ok(Math.abs(david.scoreSoll - 49 / 12) < 1e-10);
+  assert.equal(anna.scoreIst, 5);
+  assert.ok(Math.abs(anna.scoreSoll - 14 / 3) < 1e-10);
+  assert.equal(ben.scoreIst, 6);
+  assert.ok(Math.abs(ben.scoreSoll - 14 / 3) < 1e-10);
+  assert.equal(clara.scoreSoll, 2);
+  assert.ok(Math.abs(david.scoreSoll - 14 / 3) < 1e-10);
 });
 
 test('Dienstpunkte lassen sich konfigurieren und ungültige Werte werden abgewiesen', () => {
   const state = { ...exampleData(), dutyPoints: { ref1: 5, ref2: 2, table: 1 } };
-  assert.equal(statistics(state)[0].scoreIst, 6);
+  assert.equal(statistics(state)[0].scoreIst, 7);
   assert.throws(() => validateState({ ...state, dutyPoints: { ref1: -1, ref2: 2, table: 1 } }), /Dienstpunkte/);
 });
 
@@ -78,11 +84,33 @@ test('Linien-Dienste fließen in SOLL, IST und Statistik ein und alte Einsätze 
   state.entries[0].lines = 1;
   const [anna, ben] = statistics(state);
   assert.equal(anna.lines, 1);
-  assert.equal(anna.scoreIst, 5);
-  assert.ok(Math.abs(anna.scoreSoll - 13 / 3) < 1e-10);
-  assert.ok(Math.abs(ben.scoreSoll - 13 / 3) < 1e-10);
+  assert.equal(anna.scoreIst, 6);
+  assert.ok(Math.abs(anna.scoreSoll - 59 / 12) < 1e-10);
+  assert.ok(Math.abs(ben.scoreSoll - 59 / 12) < 1e-10);
 
   const configured = { ...state, dutyPoints: { ref1: 3, ref2: 2, table: 1, lines: 4 } };
-  assert.equal(statistics(configured)[0].scoreIst, 8);
-  assert.ok(Math.abs(statistics(configured)[0].scoreSoll - 61 / 12) < 1e-10);
+  assert.equal(statistics(configured)[0].scoreIst, 9);
+  assert.ok(Math.abs(statistics(configured)[0].scoreSoll - 17 / 3) < 1e-10);
+});
+
+test('Fahren erhöht SOLL pro Fahrer und ist konfigurierbar', () => {
+  const state = exampleData();
+  const [anna] = statistics(state);
+  assert.equal(anna.scoreIst, 5);
+  assert.ok(Math.abs(anna.scoreSoll - 14 / 3) < 1e-10);
+
+  const configured = { ...state, dutyPoints: { ...state.dutyPoints, drive: 3 } };
+  const [configuredAnna] = statistics(configured);
+  assert.equal(configuredAnna.scoreIst, 7);
+  assert.ok(Math.abs(configuredAnna.scoreSoll - 35 / 6) < 1e-10);
+});
+
+test('Extra-Punkte erhöhen den Teamfaktor für alle Gespielten und den IST-Score des Eintragenden', () => {
+  const state = updateEntry(exampleData(), 'ST01', 'P1', { extra: 2 });
+  const [anna, ben] = statistics(state);
+  assert.equal(anna.extra, 2);
+  assert.ok(Math.abs(anna.scoreSoll - 31 / 6) < 1e-10);
+  assert.ok(Math.abs(ben.scoreSoll - 31 / 6) < 1e-10);
+  assert.equal(anna.scoreIst, 7);
+  assert.equal(ben.scoreIst, 6);
 });

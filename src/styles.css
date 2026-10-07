@@ -214,6 +214,21 @@ input::placeholder { color: #7891b5; }
 .played-stat { background: #e0edff; border-radius: 4px; padding: 5px 9px; color: #2f7df4; font-weight: 500; }
 .stats-table td.money-cell { font-weight: 600; color: var(--green); white-space: nowrap; }
 .stats-table td.score-cell { color: #071a3d; font-size: 15px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.player-expand { display: flex; align-items: center; gap: 12px; min-width: 0; width: 100%; padding: 0; border: 0; background: none; text-align: left; color: inherit; }
+.player-expand strong { font-size: 13px; font-weight: 600; color: #071a3d; overflow-wrap: anywhere; }
+.player-expand-icon { color: #7891b5; transition: transform .15s; margin-left: 2px; }
+.player-expand.is-open .player-expand-icon { transform: rotate(180deg); color: #2f7df4; }
+.player-expand:hover .player-expand-icon { color: #2f7df4; }
+.player-breakdown-row td { padding: 0 17px 18px; background: #f5f9ff; border-bottom: 1px solid #dce8f8; }
+.player-breakdown { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.player-breakdown-head, .player-breakdown-item { display: grid; grid-template-columns: minmax(140px, 2fr) 1fr 1fr 1fr 1fr; gap: 10px; align-items: center; }
+.player-breakdown-head { padding: 10px 12px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: #6f89b0; }
+.player-breakdown-item { padding: 9px 12px; background: #fff; border: 1px solid #e3eefc; border-radius: 6px; font-size: 12px; color: #46658f; font-variant-numeric: tabular-nums; }
+.player-breakdown-item > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.player-breakdown-item strong { color: #071a3d; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.player-breakdown-item small { color: #7891b5; font-size: 10px; }
+.player-breakdown-item .breakdown-behind { color: #b44f3b; font-weight: 650; }
+.player-breakdown-item .breakdown-ahead { color: #248455; font-weight: 650; }
 .row-actions { display: flex; gap: 1px; }
 .row-actions .icon-button { width: 29px; height: 29px; }
 .stats-table tfoot td { padding-block: 16px; font-size: 11px; font-weight: 600; background: #eaf2ff; white-space: nowrap; }

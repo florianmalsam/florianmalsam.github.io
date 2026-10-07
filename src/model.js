@@ -98,6 +98,18 @@ export function matchFactor(state, matchId) {
   return participations ? teamEffort / participations : 0;
 }
 
+export function playerMatchBreakdown(state, playerId) {
+  const points = dutyPoints(state);
+  return [...state.matches].sort((first, second) => first.date.localeCompare(second.date)).reduce((rows, match) => {
+    const entry = state.entries.find(item => item.matchId === match.id && item.playerId === playerId);
+    if (!entry) return rows;
+    const beitrag = entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0);
+    const zielbeitrag = entry.played ? matchFactor(state, match.id) : 0;
+    rows.push({ matchId: match.id, date: match.date, opponent: match.opponent, played: entry.played, zielbeitrag, beitrag });
+    return rows;
+  }, []);
+}
+
 export function statistics(state) {
   const points = dutyPoints(state);
   const factorByMatch = new Map(state.matches.map(match => [match.id, matchFactor(state, match.id)]));

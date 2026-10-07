@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exampleData, validateState, statistics, matchFactor, addEntry, addPlayer, updateEntry, nextMatchId } from './model.js';
+import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId } from './model.js';
 
 test('Beispieldaten berechnen Spieltage, Fahrten, Dienste und Erstattung korrekt', () => {
   const state = validateState(exampleData());
@@ -110,6 +110,21 @@ test('Der Spieltagsfaktor entspricht Teamaufwand je gespielter Teilnahme', () =>
   assert.equal(matchFactor(state, 'ST01'), 2);
   assert.ok(Math.abs(matchFactor(state, 'ST02') - 8 / 3) < 1e-10);
   assert.equal(matchFactor(state, 'missing-match'), 0);
+});
+
+test('Spieltag-Aufschlüsselung liefert nur Einsätze des Spielers mit Ziel- und Beitragspunkten', () => {
+  const state = exampleData();
+  const annaRows = playerMatchBreakdown(state, 'P1');
+  assert.deepEqual(annaRows.map(row => row.matchId), ['ST01', 'ST02']);
+  assert.equal(annaRows[0].zielbeitrag, 2);
+  assert.equal(annaRows[0].beitrag, 4);
+  assert.equal(annaRows[1].beitrag, 1);
+  const claraRows = playerMatchBreakdown(state, 'P3');
+  assert.deepEqual(claraRows.map(row => ({ matchId: row.matchId, played: row.played })), [
+    { matchId: 'ST01', played: true },
+    { matchId: 'ST02', played: false },
+  ]);
+  assert.ok(Math.abs(claraRows[1].zielbeitrag - 0) < 1e-10);
 });
 
 test('Extra-Punkte erhöhen den Teamfaktor für alle Gespielten und den IST-Score des Eintragenden', () => {

@@ -55,3 +55,20 @@ test('Geänderter Kilometersatz wird unmittelbar berücksichtigt', () => {
   assert.equal(statistics(state)[0].reimbursement, 36);
   assert.equal(statistics(state)[1].reimbursement, 54);
 });
+
+test('SOLL wird pro Spieltag aus Team-Dienstpunkten je gespielter Teilnahme berechnet', () => {
+  const state = exampleData();
+  const [anna, ben, clara, david] = statistics(state);
+  assert.equal(anna.scoreIst, 4);
+  assert.ok(Math.abs(anna.scoreSoll - 49 / 12) < 1e-10);
+  assert.equal(ben.scoreIst, 5);
+  assert.ok(Math.abs(ben.scoreSoll - 49 / 12) < 1e-10);
+  assert.equal(clara.scoreSoll, 1.75);
+  assert.ok(Math.abs(david.scoreSoll - 49 / 12) < 1e-10);
+});
+
+test('Dienstpunkte lassen sich konfigurieren und ungültige Werte werden abgewiesen', () => {
+  const state = { ...exampleData(), dutyPoints: { ref1: 5, ref2: 2, table: 1 } };
+  assert.equal(statistics(state)[0].scoreIst, 6);
+  assert.throws(() => validateState({ ...state, dutyPoints: { ref1: -1, ref2: 2, table: 1 } }), /Dienstpunkte/);
+});

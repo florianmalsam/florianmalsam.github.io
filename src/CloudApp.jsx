@@ -6,7 +6,7 @@ import { exampleData, validateState } from './model.js';
 import { createSaveQueue } from './save-queue.js';
 
 function Gate({ children }) {
-  return <main className="login-page"><div className="login-photo"><img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=1400&q=85" alt="Volleyballspieler am Netz" /><span><Volleyball size={25} />seitenwechsel.</span></div><section className="login-content"><div className="brand"><span className="brand-mark"><Volleyball size={25} /></span><span>seitenwechsel<span className="brand-dot">.</span></span></div>{children}</section></main>;
+  return <main className="login-page"><div className="login-photo"><img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=1400&q=85" alt="Volleyballspieler am Netz" /><span><Volleyball size={25} />TSB Herren 2 Stats</span></div><section className="login-content"><div className="brand"><span className="brand-mark"><Volleyball size={25} /></span><span>TSB Herren 2 Stats</span></div>{children}</section></main>;
 }
 
 function Login() {
@@ -14,7 +14,7 @@ function Login() {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  return <Gate><div className="login-title"><LockKeyhole size={22} /><span className="eyebrow">DEIN VOLLEYBALLTEAM</span><h1>Willkommen zurück.</h1></div><form onSubmit={async event => {
+  return <Gate><div className="login-title"><LockKeyhole size={22} /><span className="eyebrow">TSB HERREN 2 STATS</span><h1>Willkommen zurück.</h1></div><form onSubmit={async event => {
     event.preventDefault();
     setBusy(true);
     setError('');
@@ -32,7 +32,7 @@ function downloadBackup(data) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `seitenwechsel-ungespeichert-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.download = `tsb-herren-2-stats-ungespeichert-${new Date().toISOString().slice(0, 10)}.json`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -121,6 +121,7 @@ function RemoteWorkspace({ user }) {
 export default function CloudApp() {
   const [session, setSession] = useState(undefined);
   const [authError, setAuthError] = useState(false);
+  const [localMode, setLocalMode] = useState(false);
   useEffect(() => {
     if (!cloud) return;
     let active = true;
@@ -130,7 +131,10 @@ export default function CloudApp() {
     const { data } = cloud.auth.onAuthStateChange((_event, next) => { if (active) setSession(next); });
     return () => { active = false; data.subscription.unsubscribe(); };
   }, []);
-  if (!configured) return <Gate><div className="login-title"><LockKeyhole size={23} /><h1>Verbindung fehlt.</h1><p>Die Supabase-Konfiguration fehlt. Bitte zuerst die Einrichtung in der Projektdatei SETUP.md abschließen.</p></div></Gate>;
+  if (!configured) {
+    if (import.meta.env.DEV && localMode) return <App />;
+    return <Gate><div className="login-title"><LockKeyhole size={23} /><h1>Verbindung fehlt.</h1><p>Die Supabase-Konfiguration fehlt. Bitte zuerst die Einrichtung in der Projektdatei SETUP.md abschließen.</p>{import.meta.env.DEV && <button className="button secondary login-submit" onClick={() => setLocalMode(true)}>Lokal mit Testdaten starten</button>}</div></Gate>;
+  }
   if (authError) return <Gate><div className="login-title"><h1>Anmeldung nicht verfügbar.</h1><p>Bitte Browser-Speicherung und Verbindung prüfen.</p><button className="button primary" onClick={() => window.location.reload()}><RefreshCw size={17} />Neu laden</button></div></Gate>;
   if (session === undefined) return <Gate><div className="login-title"><h1>Anmeldung wird geprüft …</h1></div></Gate>;
   if (!session) return <Login />;

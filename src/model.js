@@ -90,14 +90,17 @@ export function updateEntry(state, matchId, playerId, patch) {
   return validateState({ ...state, entries });
 }
 
+export function matchFactor(state, matchId) {
+  const entries = state.entries.filter(entry => entry.matchId === matchId);
+  const participations = entries.filter(entry => entry.played).length;
+  const points = dutyPoints(state);
+  const teamEffort = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
+  return participations ? teamEffort / participations : 0;
+}
+
 export function statistics(state) {
   const points = dutyPoints(state);
-  const factorByMatch = new Map(state.matches.map(match => {
-    const entries = state.entries.filter(entry => entry.matchId === match.id);
-    const participations = entries.filter(entry => entry.played).length;
-    const dutyScore = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
-    return [match.id, participations ? dutyScore / participations : 0];
-  }));
+  const factorByMatch = new Map(state.matches.map(match => [match.id, matchFactor(state, match.id)]));
   return state.players.map(player => {
     const entries = state.entries.filter(entry => entry.playerId === player.id);
     const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);

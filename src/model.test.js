@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exampleData, validateState, statistics, addEntry, addPlayer, updateEntry, nextMatchId } from './model.js';
+import { exampleData, validateState, statistics, matchFactor, addEntry, addPlayer, updateEntry, nextMatchId } from './model.js';
 
 test('Beispieldaten berechnen Spieltage, Fahrten, Dienste und Erstattung korrekt', () => {
   const state = validateState(exampleData());
@@ -103,6 +103,13 @@ test('Fahren erhöht SOLL pro Fahrer und ist konfigurierbar', () => {
   const [configuredAnna] = statistics(configured);
   assert.equal(configuredAnna.scoreIst, 7);
   assert.ok(Math.abs(configuredAnna.scoreSoll - 35 / 6) < 1e-10);
+});
+
+test('Der Spieltagsfaktor entspricht Teamaufwand je gespielter Teilnahme', () => {
+  const state = exampleData();
+  assert.equal(matchFactor(state, 'ST01'), 2);
+  assert.ok(Math.abs(matchFactor(state, 'ST02') - 8 / 3) < 1e-10);
+  assert.equal(matchFactor(state, 'missing-match'), 0);
 });
 
 test('Extra-Punkte erhöhen den Teamfaktor für alle Gespielten und den IST-Score des Eintragenden', () => {

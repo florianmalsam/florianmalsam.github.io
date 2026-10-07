@@ -102,6 +102,9 @@ h1, h2, h3, h4, .brand { font-family: 'Manrope', sans-serif; letter-spacing: 0; 
 h3 { font-size: 17px; font-weight: 750; color: #071a3d; }
 h3 .count-badge { margin-left: 7px; vertical-align: middle; font-size: 10px; }
 .table-toolbar { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; }
+.stats-sort-control { display: flex; align-items: center; gap: 6px; color: #46658f; font-size: 10px; }
+.stats-sort-control > label { white-space: nowrap; }
+.stats-sort-control .icon-button { border: 1px solid #c9dcf7; background: #fff; color: #46658f; }
 .search-box { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #c9dcf7; border-radius: 5px; background: white; color: #7891b5; width: 242px; height: 36px; }
 .search-box input { font-size: 12px; width: 100%; min-width: 0; border: 0; background: transparent; color: #071a3d; outline: none; }
 .search-box:focus-within { border-color: #72aaff; box-shadow: 0 0 0 2px #2f7df418; }
@@ -269,8 +272,8 @@ input::placeholder { color: #7891b5; }
   .save-status { display: none; }
   .header-tools { gap: 10px; }
   .match-summary { gap: 20px 0; grid-template-columns: repeat(2, 1fr); }
-  .match-summary > div:nth-child(3) { padding-left: 0; }
-  .match-summary > div:nth-child(2) { border: 0; }
+  .match-summary > div:nth-child(odd) { padding-left: 0; }
+  .match-summary > div:nth-child(even) { padding-right: 0; border: 0; }
   .roster-table-head, .roster-row { grid-template-columns: minmax(92px, 1fr) 43px 45px 68px repeat(4, 52px) 52px 24px; }
   .stepper { width: 58px; }
   .stepper button { width: 17px; }
@@ -311,8 +314,8 @@ input::placeholder { color: #7891b5; }
   .heading-actions .icon-button { width: 30px; height: 30px; }
   .match-summary { grid-template-columns: repeat(2, 1fr); row-gap: 25px; padding: 22px 0; }
   .match-summary > div { gap: 10px; padding: 0 12px; }
-  .match-summary > div:nth-child(3) { padding-left: 0; }
-  .match-summary > div:nth-child(2) { border: 0; }
+  .match-summary > div:nth-child(odd) { padding-left: 0; }
+  .match-summary > div:nth-child(even) { padding-right: 0; border: 0; }
   .match-summary strong { font-size: 22px; }
   .match-summary > div > span > span { font-size: 10px; }
   .summary-icon { width: 32px; height: 35px; }

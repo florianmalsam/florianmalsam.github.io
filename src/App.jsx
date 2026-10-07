@@ -204,7 +204,11 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   const sum = field => totals.reduce((total, item) => total + item[field], 0);
   const totalSoll = sum('scoreSoll');
   const totalIst = sum('scoreIst');
-  const scoreProgress = totalSoll > 0 ? totalIst / totalSoll * 100 : totalIst > 0 ? 100 : 0;
+  const eligiblePlayers = totals.filter(player => player.played > 0 || player.scoreIst > 0);
+  const playersBelowTarget = eligiblePlayers.filter(player => player.scoreIst + 1e-9 < player.scoreSoll).length;
+  const playersAtOrAboveTarget = eligiblePlayers.length - playersBelowTarget;
+  const outstandingScore = totals.reduce((total, player) => total + Math.max(0, player.scoreSoll - player.scoreIst), 0);
+  const targetReachedPercent = eligiblePlayers.length ? playersAtOrAboveTarget / eligiblePlayers.length * 100 : 0;
 
   return <div className="app">
     <header className="topbar">
@@ -260,9 +264,9 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       <div className="team-heading"><div><span className="eyebrow">ZUSAMMEN IM EINSATZ</span><h1>Mannschaft</h1><p>{data.players.length} Spieler · {data.matches.length} Spieltage</p></div><button className="button primary" disabled={readOnly} onClick={() => setDialog({ type: 'player' })}><Plus size={17} />Spieler anlegen</button></div>
       <div className="team-summary"><div><span>Gespielte Einsätze</span><strong>{sum('played')}</strong></div><div><span>Gefahrene Kilometer</span><strong>{number(sum('km'))}<small> km</small></strong></div><div><span>Übernommene Dienste</span><strong>{sum('ref1') + sum('ref2') + sum('table') + sum('lines')}</strong></div><div><span>Fahrtkostenerstattung</span><strong>{euro(sum('reimbursement'))}</strong></div></div>
       <section className="score-overview" aria-label="Gesamt-Punktebilanz">
-        <div className="score-overview-heading"><span className="eyebrow">PUNKTEBILANZ</span><strong>Euer Ausgleich im Überblick</strong></div>
-        <div className="score-overview-values"><div className="score-overview-metric"><span>Zielbeitrag</span><strong>{number(totalSoll)}<small> Pkt.</small></strong></div><div className="score-overview-metric score-overview-ist"><span>Beitrag</span><strong>{number(totalIst)}<small> Pkt.</small></strong></div></div>
-        <div className="score-overview-progress"><div><span>Beitrag im Verhältnis zum Zielbeitrag</span><strong>{number(scoreProgress)}%</strong></div><div className="score-progress-track" role="progressbar" aria-label="Beitrag im Verhältnis zum Zielbeitrag" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.min(scoreProgress, 100)}><span style={{ width: `${Math.min(scoreProgress, 100)}%` }} /></div></div>
+        <div className="score-overview-heading"><span className="eyebrow">INDIVIDUELLER AUSGLEICH</span><strong>Wie ausgewogen ist das Team?</strong></div>
+        <div className="score-overview-values"><div className="score-overview-metric score-metric-behind"><span>Unter Ziel</span><strong>{playersBelowTarget}<small> Spieler</small></strong></div><div className="score-overview-metric score-metric-reached"><span>Ziel erreicht</span><strong>{playersAtOrAboveTarget}<small> Spieler</small></strong></div><div className="score-overview-metric"><span>Offener Ausgleich</span><strong>{number(outstandingScore)}<small> Pkt.</small></strong></div></div>
+        <div className="score-overview-progress"><div><span>Spieler im oder über Ziel</span><strong>{number(targetReachedPercent)}%</strong></div><div className="score-progress-track" role="progressbar" aria-label="Spieler im oder über Ziel" aria-valuemin="0" aria-valuemax="100" aria-valuenow={targetReachedPercent}><span style={{ width: `${targetReachedPercent}%` }} /></div></div>
       </section>
       <div className="team-section-heading"><h3>Die Mannschaftsbilanz</h3><div className="team-controls"><label className="rate-control"><Euro size={16} /><span>pro km</span><NumericInput value={data.rate} disabled={readOnly} decimalPlaces={2} label="Euro pro Kilometer" onChange={rate => commit({ ...data, rate })} /><span>€</span></label><div className="score-control"><span>Punkte je Aufgabe</span>{[['ref1', '1. Schiri'], ['ref2', '2. Schiri'], ['table', 'Tafel'], ['lines', 'Linien'], ['drive', 'Fahren']].map(([field, label]) => <label key={field}>{label}<NumericInput value={dutyPoints(data)[field]} disabled={readOnly} label={`${label}: Punkte`} onChange={value => commit({ ...data, dutyPoints: { ...dutyPoints(data), [field]: value } })} /></label>)}</div></div></div>
       <div className="table-toolbar"><div className="search-box"><Search size={17} /><input placeholder="Spieler suchen …" aria-label="Mannschaft nach Spieler filtern" value={query} onChange={event => setQuery(event.target.value)} /></div><span className="roster-counter">Alle Spieltage</span></div>

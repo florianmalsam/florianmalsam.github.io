@@ -173,16 +173,18 @@ input::placeholder { color: #7891b5; }
 .team-summary span { color: #6f89b0; font-size: 11px; }
 .team-summary strong { color: #071a3d; font-size: 29px; font-weight: 550; }
 .team-summary small { font-size: 15px; font-weight: 400; color: #7891b5; }
-.score-overview { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr) minmax(250px, 1.4fr); align-items: center; gap: 20px; padding: 17px 20px; margin: -8px 0 32px; border-block: 1px solid #b8d3fb; background: #e5efff; }
+.score-overview { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(390px, 1.8fr) minmax(230px, 1.2fr); align-items: center; gap: 20px; padding: 17px 20px; margin: -8px 0 32px; border-block: 1px solid #b8d3fb; background: #e5efff; }
 .score-overview-heading { display: flex; flex-direction: column; gap: 5px; }
 .score-overview-heading .eyebrow { color: #2f7df4; }
 .score-overview-heading > strong { color: #071a3d; font-family: 'Manrope', sans-serif; font-size: 16px; }
-.score-overview-values { display: flex; align-items: center; gap: 22px; }
+.score-overview-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 14px; }
 .score-overview-metric { display: flex; flex-direction: column; gap: 3px; }
 .score-overview-metric > span { color: #46658f; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .score-overview-metric > strong { color: #071a3d; font-size: 25px; font-variant-numeric: tabular-nums; }
 .score-overview-metric > strong small { color: #7891b5; font-size: 11px; font-weight: 500; }
 .score-overview-ist > strong { color: #1f66d4; }
+.score-metric-behind > strong { color: #b44f3b; }
+.score-metric-reached > strong { color: #248455; }
 .score-overview-progress { display: flex; flex-direction: column; gap: 8px; }
 .score-overview-progress > div:first-child { display: flex; justify-content: space-between; gap: 10px; color: #46658f; font-size: 10px; }
 .score-overview-progress > div:first-child strong { color: #071a3d; font-variant-numeric: tabular-nums; }
@@ -355,8 +357,9 @@ input::placeholder { color: #7891b5; }
   .team-summary span { font-size: 10px; }
   .score-overview { grid-template-columns: 1fr 1fr; gap: 14px; padding: 15px; margin-top: -5px; }
   .score-overview-heading { grid-column: 1 / -1; }
-  .score-overview-values { gap: 18px; }
-  .score-overview-metric > strong { font-size: 22px; }
+  .score-overview-values { grid-column: 1 / -1; gap: 10px; }
+  .score-overview-metric > strong { font-size: 20px; }
+  .score-overview-metric > span { font-size: 9px; }
   .score-overview-progress { grid-column: 1 / -1; }
   .team-section-heading { gap: 10px; flex-wrap: wrap; }
   .team-section-heading h3 { font-size: 15px; }

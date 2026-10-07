@@ -4,11 +4,11 @@ import { exampleData, validateState, statistics, addEntry, addPlayer, updateEntr
 
 test('Beispieldaten berechnen Spieltage, Fahrten, Dienste und Erstattung korrekt', () => {
   const state = validateState(exampleData());
-  assert.deepEqual(statistics(state).map(({ name, played, drove, km, ref1, ref2, table, reimbursement }) => ({ name, played, drove, km, ref1, ref2, table, reimbursement })), [
-    { name: 'Anna', played: 2, drove: 1, km: 80, ref1: 1, ref2: 0, table: 1, reimbursement: 24 },
-    { name: 'Ben', played: 2, drove: 1, km: 120, ref1: 1, ref2: 1, table: 0, reimbursement: 36 },
-    { name: 'Clara', played: 1, drove: 0, km: 0, ref1: 0, ref2: 1, table: 1, reimbursement: 0 },
-    { name: 'David', played: 2, drove: 0, km: 0, ref1: 0, ref2: 0, table: 2, reimbursement: 0 },
+  assert.deepEqual(statistics(state).map(({ name, played, drove, km, ref1, ref2, table, lines, reimbursement }) => ({ name, played, drove, km, ref1, ref2, table, lines, reimbursement })), [
+    { name: 'Anna', played: 2, drove: 1, km: 80, ref1: 1, ref2: 0, table: 1, lines: 0, reimbursement: 24 },
+    { name: 'Ben', played: 2, drove: 1, km: 120, ref1: 1, ref2: 1, table: 0, lines: 0, reimbursement: 36 },
+    { name: 'Clara', played: 1, drove: 0, km: 0, ref1: 0, ref2: 1, table: 1, lines: 0, reimbursement: 0 },
+    { name: 'David', played: 2, drove: 0, km: 0, ref1: 0, ref2: 0, table: 2, lines: 0, reimbursement: 0 },
   ]);
 });
 
@@ -71,4 +71,18 @@ test('Dienstpunkte lassen sich konfigurieren und ungültige Werte werden abgewie
   const state = { ...exampleData(), dutyPoints: { ref1: 5, ref2: 2, table: 1 } };
   assert.equal(statistics(state)[0].scoreIst, 6);
   assert.throws(() => validateState({ ...state, dutyPoints: { ref1: -1, ref2: 2, table: 1 } }), /Dienstpunkte/);
+});
+
+test('Linien-Dienste fließen in SOLL, IST und Statistik ein und alte Einsätze bleiben gültig', () => {
+  const state = exampleData();
+  state.entries[0].lines = 1;
+  const [anna, ben] = statistics(state);
+  assert.equal(anna.lines, 1);
+  assert.equal(anna.scoreIst, 5);
+  assert.ok(Math.abs(anna.scoreSoll - 13 / 3) < 1e-10);
+  assert.ok(Math.abs(ben.scoreSoll - 13 / 3) < 1e-10);
+
+  const configured = { ...state, dutyPoints: { ref1: 3, ref2: 2, table: 1, lines: 4 } };
+  assert.equal(statistics(configured)[0].scoreIst, 8);
+  assert.ok(Math.abs(statistics(configured)[0].scoreSoll - 61 / 12) < 1e-10);
 });

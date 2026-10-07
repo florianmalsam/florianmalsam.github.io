@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, Eye, EyeOff, LockKeyhole, LogIn, RefreshCw, Volleyball } from 'lucide-react';
+import { ArrowDownToLine, Eye, EyeOff, LockKeyhole, LogIn, RefreshCw } from 'lucide-react';
 import App from './App.jsx';
 import { cloud, configured, readerEmail, teamEmail } from './cloud.js';
 import { exampleData, validateState } from './model.js';
 import { createSaveQueue } from './save-queue.js';
 
 function Gate({ children }) {
-  return <main className="login-page"><div className="login-photo"><img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=1400&q=85" alt="Volleyballspieler am Netz" /><span><Volleyball size={25} />TSB Herren 2 Stats</span></div><section className="login-content"><div className="brand"><span className="brand-mark"><Volleyball size={25} /></span><span>TSB Herren 2 Stats</span></div>{children}</section></main>;
+  return <main className="login-page"><div className="login-photo"><img src="/tsbLogoNeu-black.png" alt="" /><span>TSB Herren 2 Stats</span></div><section className="login-content"><div className="brand"><span className="brand-mark"><img src="/tsbLogoNeu-black.png" alt="TSB Ravensburg" /></span><span>TSB Herren 2 Stats</span></div>{children}</section></main>;
 }
 
 function Login() {

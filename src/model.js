@@ -1,5 +1,5 @@
 export const STORAGE_KEY = 'seitenwechsel-v1';
-export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1 };
+export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1 };
 
 export function dutyPoints(state) {
   return { ...DEFAULT_DUTY_POINTS, ...state.dutyPoints };
@@ -62,7 +62,8 @@ export function validateState(state) {
     pairs.add(key);
     if (typeof entry.played !== 'boolean' || typeof entry.drove !== 'boolean') throw new Error('Teilnahme und Fahrt müssen boolesche Werte sein.');
     if (!Number.isFinite(entry.km) || entry.km < 0 || (!entry.drove && entry.km !== 0)) throw new Error('Kilometer dürfen nur beim Fahrer eingetragen sein.');
-    for (const field of ['ref1', 'ref2', 'table']) {
+    for (const field of ['ref1', 'ref2', 'table', 'lines']) {
+      if (field === 'lines' && entry[field] === undefined) continue;
       if (!Number.isSafeInteger(entry[field]) || entry[field] < 0) throw new Error('Dienste müssen nichtnegative ganze Zahlen sein.');
     }
   }
@@ -75,7 +76,7 @@ export function addPlayer(state, name) {
 }
 
 export function addEntry(state, matchId, playerId) {
-  return validateState({ ...state, entries: [...state.entries, { matchId, playerId, played: false, drove: false, km: 0, ref1: 0, ref2: 0, table: 0 }] });
+  return validateState({ ...state, entries: [...state.entries, { matchId, playerId, played: false, drove: false, km: 0, ref1: 0, ref2: 0, table: 0, lines: 0 }] });
 }
 
 export function updateEntry(state, matchId, playerId, patch) {
@@ -93,16 +94,16 @@ export function statistics(state) {
   const factorByMatch = new Map(state.matches.map(match => {
     const entries = state.entries.filter(entry => entry.matchId === match.id);
     const participations = entries.filter(entry => entry.played).length;
-    const dutyScore = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table, 0);
+    const dutyScore = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines, 0);
     return [match.id, participations ? dutyScore / participations : 0];
   }));
   return state.players.map(player => {
     const entries = state.entries.filter(entry => entry.playerId === player.id);
-    const sum = field => entries.reduce((total, entry) => total + entry[field], 0);
+    const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);
     const km = sum('km');
-    const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table, 0);
+    const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines, 0);
     const scoreSoll = entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) : 0), 0);
-    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
+    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
   });
 }
 

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, Car, Check, CheckCheck, ChevronRight, CircleHelp, ClipboardList, Euro, LogOut, MapPin, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import { STORAGE_KEY, dutyPoints, exampleData, validateState, addPlayer, addEntry, updateEntry, statistics, nextMatchId } from './model.js';
 
@@ -19,6 +20,37 @@ function loadData() {
 
 function IconButton({ label, children, className = '', ...props }) {
   return <button className={`icon-button ${className}`} title={label} aria-label={label} {...props}>{children}</button>;
+}
+
+function ScoreHelp({ label, text }) {
+  const tooltipId = useId();
+  const buttonRef = useRef(null);
+  const hideTimer = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  function showTooltip() {
+    clearTimeout(hideTimer.current);
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const left = Math.max(140, Math.min(window.innerWidth - 140, rect.left + rect.width / 2));
+    const below = rect.bottom + 96 < window.innerHeight;
+    setTooltip({ left, top: below ? rect.bottom + 8 : rect.top - 8, placement: below ? 'below' : 'above' });
+  }
+
+  function hideTooltip(delay = true) {
+    clearTimeout(hideTimer.current);
+    if (delay) hideTimer.current = setTimeout(() => setTooltip(null), 160);
+    else setTooltip(null);
+  }
+
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
+
+  return <>
+    <button ref={buttonRef} type="button" className="icon-button score-help" aria-label={label} aria-describedby={tooltip ? tooltipId : undefined} onPointerEnter={showTooltip} onPointerLeave={() => hideTooltip()} onFocus={showTooltip} onBlur={() => hideTooltip(false)}>
+      <CircleHelp size={14} />
+    </button>
+    {tooltip && createPortal(<div id={tooltipId} className="score-tooltip" role="tooltip" data-placement={tooltip.placement} style={{ left: tooltip.left, top: tooltip.top }} onPointerEnter={() => clearTimeout(hideTimer.current)} onPointerLeave={() => hideTooltip()}>{text}</div>, document.body)}
+  </>;
 }
 
 function Avatar({ name, index = 0, scoreSoll, scoreIst }) {
@@ -270,7 +302,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       </section>
       <div className="team-section-heading"><h3>Die Mannschaftsbilanz</h3><div className="team-controls"><label className="rate-control"><Euro size={16} /><span>pro km</span><NumericInput value={data.rate} disabled={readOnly} decimalPlaces={2} label="Euro pro Kilometer" onChange={rate => commit({ ...data, rate })} /><span>€</span></label><div className="score-control"><span>Punkte je Aufgabe</span>{[['ref1', '1. Schiri'], ['ref2', '2. Schiri'], ['table', 'Tafel'], ['lines', 'Linien'], ['drive', 'Fahren']].map(([field, label]) => <label key={field}>{label}<NumericInput value={dutyPoints(data)[field]} disabled={readOnly} label={`${label}: Punkte`} onChange={value => commit({ ...data, dutyPoints: { ...dutyPoints(data), [field]: value } })} /></label>)}</div></div></div>
       <div className="table-toolbar"><div className="search-box"><Search size={17} /><input placeholder="Spieler suchen …" aria-label="Mannschaft nach Spieler filtern" value={query} onChange={event => setQuery(event.target.value)} /></div><span className="roster-counter">Alle Spieltage</span></div>
-      <div className="stats-scroll"><table className="stats-table"><thead><tr><th>Spieler</th><th>Gespielt</th><th>Fahrtage</th><th>Kilometer</th><th>1. Schiri</th><th>2. Schiri</th><th>Tafel</th><th>Linien</th><th>Extra</th><th className="score-column score-column-soll"><span className="score-help-label">Zielbeitrag<IconButton className="score-help" label="Zielbeitrag erklären" title="Zielbeitrag: Dein anteiliger Teamaufwand. Er berücksichtigt Dienste, Fahren und Extra-Punkte des Spieltags und wird auf alle gespielten Teilnahmen verteilt."><CircleHelp size={14} /></IconButton></span></th><th className="score-column score-column-ist"><span className="score-help-label">Beitrag<IconButton className="score-help" label="Beitrag erklären" title="Beitrag: Deine tatsächlich gesammelten Punkte aus übernommenen Diensten, Fahren und Extra-Punkten."><CircleHelp size={14} /></IconButton></span></th><th>Erstattung</th><th aria-label="Aktionen" /></tr></thead><tbody>{totals.filter(player => player.name.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE'))).map(player => <tr key={player.id}><td><div className="player-cell"><Avatar name={player.name} index={data.players.findIndex(item => item.id === player.id)} scoreSoll={player.scoreSoll} scoreIst={player.scoreIst} /><strong>{player.name}</strong></div></td><td><span className="played-stat">{player.played}</span></td><td>{player.drove}</td><td>{number(player.km)}<span className="unit"> km</span></td><td>{player.ref1}</td><td>{player.ref2}</td><td>{player.table}</td><td>{player.lines}</td><td>{player.extra}</td><td className="score-cell score-column-soll">{number(player.scoreSoll)}</td><td className="score-cell score-column-ist">{number(player.scoreIst)}</td><td className="money-cell">{euro(player.reimbursement)}</td><td><div className="row-actions"><IconButton label={`${player.name} bearbeiten`} disabled={readOnly} onClick={() => setDialog({ type: 'player', player })}><Pencil size={15} /></IconButton><IconButton label={`${player.name} löschen`} className="danger-hover" disabled={readOnly} onClick={() => setDialog({ type: 'deletePlayer', player })}><Trash2 size={15} /></IconButton></div></td></tr>)}</tbody><tfoot><tr><td>Gesamt</td><td>{sum('played')}</td><td>{sum('drove')}</td><td>{number(sum('km'))} km</td><td>{sum('ref1')}</td><td>{sum('ref2')}</td><td>{sum('table')}</td><td>{sum('lines')}</td><td>{sum('extra')}</td><td className="score-column-soll">{number(totalSoll)}</td><td className="score-column-ist">{number(totalIst)}</td><td>{euro(sum('reimbursement'))}</td><td /></tr></tfoot></table></div>
+      <div className="stats-scroll"><table className="stats-table"><thead><tr><th>Spieler</th><th>Gespielt</th><th>Fahrtage</th><th>Kilometer</th><th>1. Schiri</th><th>2. Schiri</th><th>Tafel</th><th>Linien</th><th>Extra</th><th className="score-column score-column-soll"><span className="score-help-label">Zielbeitrag<ScoreHelp label="Zielbeitrag erklären" text="Dein anteiliger Teamaufwand. Dienste, Fahren und Extra-Punkte eines Spieltags werden auf alle dort gespielten Teilnahmen verteilt." /></span></th><th className="score-column score-column-ist"><span className="score-help-label">Beitrag<ScoreHelp label="Beitrag erklären" text="Deine gesammelten Punkte aus übernommenen Diensten, Fahren und Extra-Punkten." /></span></th><th>Erstattung</th><th aria-label="Aktionen" /></tr></thead><tbody>{totals.filter(player => player.name.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE'))).map(player => <tr key={player.id}><td><div className="player-cell"><Avatar name={player.name} index={data.players.findIndex(item => item.id === player.id)} scoreSoll={player.scoreSoll} scoreIst={player.scoreIst} /><strong>{player.name}</strong></div></td><td><span className="played-stat">{player.played}</span></td><td>{player.drove}</td><td>{number(player.km)}<span className="unit"> km</span></td><td>{player.ref1}</td><td>{player.ref2}</td><td>{player.table}</td><td>{player.lines}</td><td>{player.extra}</td><td className="score-cell score-column-soll">{number(player.scoreSoll)}</td><td className="score-cell score-column-ist">{number(player.scoreIst)}</td><td className="money-cell">{euro(player.reimbursement)}</td><td><div className="row-actions"><IconButton label={`${player.name} bearbeiten`} disabled={readOnly} onClick={() => setDialog({ type: 'player', player })}><Pencil size={15} /></IconButton><IconButton label={`${player.name} löschen`} className="danger-hover" disabled={readOnly} onClick={() => setDialog({ type: 'deletePlayer', player })}><Trash2 size={15} /></IconButton></div></td></tr>)}</tbody><tfoot><tr><td>Gesamt</td><td>{sum('played')}</td><td>{sum('drove')}</td><td>{number(sum('km'))} km</td><td>{sum('ref1')}</td><td>{sum('ref2')}</td><td>{sum('table')}</td><td>{sum('lines')}</td><td>{sum('extra')}</td><td className="score-column-soll">{number(totalSoll)}</td><td className="score-column-ist">{number(totalIst)}</td><td>{euro(sum('reimbursement'))}</td><td /></tr></tfoot></table></div>
       {!data.players.length && <div className="empty-state"><Users size={32} /><h4>Deine Mannschaft beginnt hier</h4><button className="button secondary" disabled={readOnly} onClick={() => setDialog({ type: 'player' })}><Plus size={17} />Spieler anlegen</button></div>}
     </main>}
     <footer className="app-footer"><span>TSB Herren 2 Stats</span><span>Dein Team. Euer Spiel.</span><span>Volleyball · Teamorganisation</span></footer>

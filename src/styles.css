@@ -124,6 +124,8 @@ input::placeholder { color: #7891b5; }
 .score-help-label { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 .score-help { width: 18px; height: 18px; padding: 0; color: #6f89b0; vertical-align: middle; }
 .score-help:hover, .score-help:focus-visible { color: #2f7df4; background: #dceaff; }
+.score-tooltip { position: fixed; z-index: 1000; width: max-content; max-width: min(280px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid #284876; border-radius: 6px; background: #071a3d; box-shadow: 0 6px 24px #071a3d30; color: #fff; font-size: 11px; font-weight: 450; line-height: 1.5; text-align: left; white-space: normal; transform: translate(-50%, 0); pointer-events: auto; }
+.score-tooltip[data-placement="above"] { transform: translate(-50%, -100%); }
 .roster-cell { display: flex; align-items: center; justify-content: center; }
 .check-toggle { position: relative; width: 28px; height: 28px; cursor: pointer; }
 .check-toggle.is-disabled { cursor: not-allowed; opacity: .55; }

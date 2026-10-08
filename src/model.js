@@ -1,5 +1,36 @@
 export const STORAGE_KEY = 'seitenwechsel-v1';
 export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, drive: 1 };
+export const EXPENSE_CATEGORIES = { catering: 'Verpflegung', marketing: 'Marketing', equipment: 'Material', other: 'Sonstiges' };
+export const INCOME_CATEGORIES = { catering: 'Verpflegung', sponsorship: 'Sponsoring', contribution: 'Beiträge', donation: 'Spenden', other: 'Sonstiges' };
+export const INCOME_DESTINATIONS = { team: 'Mannschaftskasse', club: 'Vereinskasse' };
+export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', reimbursed: 'Erstattet' };
+
+export function moneyCents(value, allowNegative = false) {
+  const text = value.trim();
+  if (!(allowNegative ? /^-?\d+(?:[.,]\d{1,2})?$/ : /^\d+(?:[.,]\d{1,2})?$/).test(text)) throw new Error('Bitte einen Betrag mit maximal zwei Nachkommastellen eingeben.');
+  const [euros, cents = ''] = text.replace('-', '').replace(',', '.').split('.');
+  const amount = (Number(euros) * 100 + Number(cents.padEnd(2, '0'))) * (text.startsWith('-') ? -1 : 1);
+  if (!Number.isSafeInteger(amount)) throw new Error('Der Betrag ist zu groß.');
+  return amount;
+}
+
+export function incomeTotal(incomes = [], destination) {
+  return incomes.reduce((total, income) => total + (destination === undefined || (income.destination ?? 'team') === destination ? income.amountCents : 0), 0);
+}
+
+export function treasuryTotals(state) {
+  const openingCents = state.treasuryOpeningBalanceCents ?? 0;
+  const incomeCents = incomeTotal(state.incomes, 'team');
+  const paidCents = (state.expenses || []).reduce((total, expense) => total + (expense.paidByPlayerId === null || expense.reimbursementStatus === 'reimbursed' ? expense.amountCents : 0), 0);
+  return { openingCents, incomeCents, paidCents, balanceCents: openingCents + incomeCents - paidCents };
+}
+
+export function expenseTotals(expenses = []) {
+  return expenses.reduce((totals, expense) => ({
+    amountCents: totals.amountCents + expense.amountCents,
+    openCents: totals.openCents + (expense.reimbursementStatus === 'open' ? expense.amountCents : 0),
+  }), { amountCents: 0, openCents: 0 });
+}
 
 export function dutyPoints(state) {
   return { ...DEFAULT_DUTY_POINTS, ...state.dutyPoints };
@@ -9,6 +40,11 @@ export function exampleData() {
   return {
     version: 1,
     rate: 0.3,
+    expenses: [],
+    incomes: [],
+    treasuryOpeningBalanceCents: 0,
+    treasuryBalanceCents: 0,
+    clubIncomeTotalCents: 0,
     dutyPoints: { ...DEFAULT_DUTY_POINTS },
     players: ['Anna', 'Ben', 'Clara', 'David'].map((name, index) => ({ id: `P${index + 1}`, name })),
     matches: [
@@ -30,6 +66,12 @@ export function exampleData() {
 
 export function normalizedName(name) {
   return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('de-DE');
+}
+
+export function expensePayer(state, expense) {
+  if (expense.paidByPlayerId === null) return 'Mannschaftskasse';
+  if (expense.paidByPlayerId === undefined) return `${expense.paidBy} (Zuordnung offen)`;
+  return state.players.find(player => player.id === expense.paidByPlayerId)?.name || 'Unbekannter Spieler';
 }
 
 export function validateState(state) {
@@ -68,7 +110,66 @@ export function validateState(state) {
     }
     if (entry.extra !== undefined && (!Number.isSafeInteger(entry.extra) || entry.extra < 0)) throw new Error('Extra-Punkte müssen nichtnegative ganze Zahlen sein.');
   }
-  return state;
+  if (state.expenses !== undefined && !Array.isArray(state.expenses)) throw new Error('Ausgaben müssen eine Liste sein.');
+  const expenseIds = new Set();
+  for (const expense of state.expenses || []) {
+    if (!expense || typeof expense.id !== 'string' || !expense.id || expenseIds.has(expense.id)) throw new Error('Ausgaben-IDs müssen eindeutig sein.');
+    expenseIds.add(expense.id);
+    if (typeof expense.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(expense.date) || !Number.isFinite(Date.parse(expense.date)) || new Date(`${expense.date}T12:00:00Z`).toISOString().slice(0, 10) !== expense.date) throw new Error('Bitte ein gültiges Ausgabendatum wählen.');
+    if (typeof expense.description !== 'string' || !expense.description.trim()) throw new Error('Die Beschreibung darf nicht leer sein.');
+    if (!Number.isSafeInteger(expense.amountCents) || expense.amountCents <= 0) throw new Error('Der Betrag muss ein positiver ganzer Centbetrag sein.');
+    if (!Object.hasOwn(EXPENSE_CATEGORIES, expense.category)) throw new Error('Bitte eine gültige Ausgabenkategorie wählen.');
+    if (expense.matchId !== null && !matchIds.has(expense.matchId)) throw new Error('Die Ausgabe verweist auf einen unbekannten Spieltag.');
+    if (expense.paidByPlayerId === undefined) {
+      if (typeof expense.paidBy !== 'string' || !expense.paidBy.trim()) throw new Error('Bitte angeben, wer bezahlt hat.');
+    } else if (expense.paidByPlayerId !== null && !playerIds.has(expense.paidByPlayerId)) {
+      throw new Error('Die Ausgabe verweist auf einen unbekannten zahlenden Spieler.');
+    }
+    if (!Object.hasOwn(REIMBURSEMENT_STATUSES, expense.reimbursementStatus)) throw new Error('Bitte einen gültigen Erstattungsstatus wählen.');
+    if (typeof expense.note !== 'string') throw new Error('Die Ausgabennotiz muss Text sein.');
+  }
+  if (!Number.isSafeInteger(expenseTotals(state.expenses).amountCents)) throw new Error('Die Ausgabensumme ist zu groß.');
+  if (state.incomes !== undefined && !Array.isArray(state.incomes)) throw new Error('Einnahmen müssen eine Liste sein.');
+  const incomeIds = new Set();
+  for (const income of state.incomes || []) {
+    if (!income || typeof income.id !== 'string' || !income.id || incomeIds.has(income.id)) throw new Error('Einnahmen-IDs müssen eindeutig sein.');
+    incomeIds.add(income.id);
+    if (typeof income.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(income.date) || !Number.isFinite(Date.parse(income.date)) || new Date(`${income.date}T12:00:00Z`).toISOString().slice(0, 10) !== income.date) throw new Error('Bitte ein gültiges Einnahmendatum wählen.');
+    if (typeof income.description !== 'string' || !income.description.trim()) throw new Error('Die Beschreibung darf nicht leer sein.');
+    if (!Number.isSafeInteger(income.amountCents) || income.amountCents <= 0) throw new Error('Der Einnahmenbetrag muss ein positiver ganzer Centbetrag sein.');
+    if (!Object.hasOwn(INCOME_CATEGORIES, income.category)) throw new Error('Bitte eine gültige Einnahmenkategorie wählen.');
+    if (income.destination !== undefined && !Object.hasOwn(INCOME_DESTINATIONS, income.destination)) throw new Error('Bitte eine gültige Zielkasse wählen.');
+    if (income.matchId !== null && !matchIds.has(income.matchId)) throw new Error('Die Einnahme verweist auf einen unbekannten Spieltag.');
+    if (typeof income.note !== 'string') throw new Error('Die Einnahmennotiz muss Text sein.');
+  }
+  if (!Number.isSafeInteger(incomeTotal(state.incomes))) throw new Error('Die Einnahmensumme ist zu groß.');
+  if (state.treasuryOpeningBalanceCents !== undefined && !Number.isSafeInteger(state.treasuryOpeningBalanceCents)) throw new Error('Der Anfangsbestand muss ein ganzer Centbetrag sein.');
+  if (state.treasuryBalanceCents !== undefined && !Number.isSafeInteger(state.treasuryBalanceCents)) throw new Error('Der Kassenstand muss ein ganzer Centbetrag sein.');
+  if (state.clubIncomeTotalCents !== undefined && (!Number.isSafeInteger(state.clubIncomeTotalCents) || state.clubIncomeTotalCents < 0)) throw new Error('Die Einnahmensumme der Vereinskasse muss ein nichtnegativer ganzer Centbetrag sein.');
+  let next = state;
+  if (state.expenses?.some(expense => expense.paidByPlayerId === undefined)) {
+    const expenses = state.expenses.map(expense => {
+      if (expense.paidByPlayerId !== undefined) return expense;
+      const name = normalizedName(expense.paidBy);
+      const player = state.players.find(item => normalizedName(item.name) === name);
+      if (name !== normalizedName('Mannschaftskasse') && !player) return expense;
+      const { paidBy, ...rest } = expense;
+      return { ...rest, paidByPlayerId: name === normalizedName('Mannschaftskasse') ? null : player.id };
+    });
+    next = { ...state, expenses };
+  }
+  if (next.incomes?.some(income => income.destination === undefined)) next = { ...next, incomes: next.incomes.map(income => income.destination === undefined ? { ...income, destination: 'team' } : income) };
+  const balance = treasuryTotals(next).balanceCents;
+  const clubIncomeTotalCents = incomeTotal(next.incomes, 'club');
+  if (!Number.isSafeInteger(balance)) throw new Error('Der Kassenstand ist zu groß.');
+  if (next.incomes === undefined || next.treasuryOpeningBalanceCents === undefined || next.treasuryBalanceCents !== balance || next.clubIncomeTotalCents !== clubIncomeTotalCents) next = { ...next, incomes: next.incomes ?? [], treasuryOpeningBalanceCents: next.treasuryOpeningBalanceCents ?? 0, treasuryBalanceCents: balance, clubIncomeTotalCents };
+  return next;
+}
+
+export function removePlayer(state, playerId) {
+  const current = validateState(state);
+  if (current.expenses?.some(expense => expense.paidByPlayerId === playerId)) throw new Error('Dieser Spieler ist mit Ausgaben verknüpft. Bitte zuerst die Ausgaben einem anderen Spieler oder der Mannschaftskasse zuordnen.');
+  return validateState({ ...current, players: current.players.filter(player => player.id !== playerId), entries: current.entries.filter(entry => entry.playerId !== playerId) });
 }
 
 export function addPlayer(state, name) {

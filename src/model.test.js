@@ -1,39 +1,117 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents } from './model.js';
+import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
 
 const sampleExpense = { id: 'E1', date: '2026-10-17', description: 'Getränke', amountCents: 4250, category: 'catering', matchId: 'ST01', paidByPlayerId: 'P1', reimbursementStatus: 'open', note: '' };
-const sampleIncome = { id: 'I1', date: '2026-10-17', description: 'Getränkeverkauf', amountCents: 10000, category: 'catering', matchId: 'ST01', destination: 'team', note: '' };
+const sampleIncome = { id: 'I1', date: '2026-10-17', description: 'Getränkeverkauf', amountCents: 10000, category: 'catering', matchId: 'ST01', note: '' };
 
-test('Vereinseinnahmen werden getrennt gespeichert und erhöhen nicht den Mannschaftskassenstand', () => {
-  const state = validateState({ ...exampleData(), treasuryOpeningBalanceCents: 5000, incomes: [sampleIncome, { ...sampleIncome, id: 'I2', destination: 'club', amountCents: 12345 }] });
-  assert.equal(state.treasuryBalanceCents, 15000);
-  assert.equal(state.clubIncomeTotalCents, 12345);
-  assert.equal(incomeTotal(state.incomes), 22345);
-  assert.equal(incomeTotal(state.incomes, 'team'), 10000);
-  assert.equal(incomeTotal(state.incomes, 'club'), 12345);
-  assert.deepEqual(validateState(JSON.parse(JSON.stringify(state))), state);
-  const changed = validateState({ ...state, incomes: state.incomes.map(income => ({ ...income, destination: 'team' })) });
-  assert.equal(changed.treasuryBalanceCents, 27345);
-  assert.equal(changed.clubIncomeTotalCents, 0);
-  assert.equal(validateState({ ...state, incomes: [sampleIncome] }).clubIncomeTotalCents, 0);
-  assert.equal(validateState({ ...state, clubIncomeTotalCents: 1 }).clubIncomeTotalCents, 12345);
+test('Kassenjournal startet mit dem aktuellen Bestand ohne erfundene Vorgeschichte', () => {
+  const state = initializeFinanceJournal({ ...exampleData(), incomes: [sampleIncome] }, '2026-10-08T10:00:00.000Z');
+  assert.equal(state.financeJournal.length, 1);
+  assert.equal(state.financeJournal[0].balanceAfterCents, 10000);
+  assert.equal(state.financeJournal[0].action, 'baseline');
+  assert.equal(initializeFinanceJournal(state), state);
+  assert.equal(exampleData().financeJournal, undefined);
 });
 
-test('Bestehende Einnahmen ohne Zielkasse bleiben der Mannschaftskasse zugeordnet', () => {
-  const { destination, ...legacyIncome } = sampleIncome;
-  const state = { ...exampleData(), incomes: [legacyIncome] };
-  delete state.clubIncomeTotalCents;
+test('Journal behält offene Auslagen, Erstattungen, Änderungen und Löschungen mit Kassenständen', () => {
+  let state = initializeFinanceJournal(exampleData());
+  state = recordFinanceChanges(state, { ...state, expenses: [sampleExpense] });
+  assert.equal(state.financeJournal.at(-1).deltaCents, 0);
+  assert.equal(state.financeJournal.at(-1).after.paidByName, 'Anna');
+  const before = state;
+  state = recordFinanceChanges(state, { ...state, expenses: [{ ...sampleExpense, reimbursementStatus: 'reimbursed' }] });
+  assert.equal(state.financeJournal.at(-1).before.reimbursementStatus, 'open');
+  assert.equal(state.financeJournal.at(-1).after.reimbursementStatus, 'reimbursed');
+  assert.equal(state.financeJournal.at(-1).deltaCents, -4250);
+  assert.equal(before.financeJournal.length, 2);
+  state = recordFinanceChanges(state, { ...state, expenses: [{ ...state.expenses[0], amountCents: 5000 }] });
+  assert.equal(state.financeJournal.at(-1).deltaCents, -750);
+  assert.equal(state.financeJournal.at(-1).before.amountCents, 4250);
+  state = recordFinanceChanges(state, { ...state, expenses: [] });
+  assert.equal(state.financeJournal.at(-1).action, 'delete');
+  assert.equal(state.financeJournal.at(-1).deltaCents, 5000);
+  assert.equal(state.financeJournal.at(-1).before.description, 'Getränke');
+  assert.equal(state.financeJournal.at(-1).balanceAfterCents, 0);
+  assert.equal(state.financeJournal[1].after.amountCents, 4250);
+  assert.deepEqual(validateState(JSON.parse(JSON.stringify(state))).financeJournal, state.financeJournal);
+});
+
+test('Journal protokolliert Einnahmen und Anfangsbestand, ignoriert unveränderte Finanzdaten', () => {
+  let state = initializeFinanceJournal(exampleData());
+  state = recordFinanceChanges(state, { ...state, treasuryOpeningBalanceCents: 5000, incomes: [sampleIncome], expenses: [{ ...sampleExpense, paidByPlayerId: null }] });
+  assert.deepEqual(state.financeJournal.map(entry => entry.deltaCents), [0, 5000, 10000, -4250]);
+  assert.equal(state.financeJournal.at(-1).balanceAfterCents, state.treasuryBalanceCents);
+  const unchanged = recordFinanceChanges(state, { ...state, rate: 0.5 });
+  assert.equal(unchanged.financeJournal.length, 4);
+  state = recordFinanceChanges(unchanged, { ...unchanged, incomes: [{ ...sampleIncome, note: 'Korrektur' }] });
+  assert.equal(state.financeJournal.at(-1).deltaCents, 0);
+  assert.equal(state.financeJournal.at(-1).after.note, 'Korrektur');
+});
+
+test('Historische Namen und Spieltagsbezüge bleiben nach Änderungen erhalten', () => {
+  let state = initializeFinanceJournal(exampleData());
+  state = recordFinanceChanges(state, { ...state, expenses: [sampleExpense] });
+  state = recordFinanceChanges(state, { ...state, matches: state.matches.filter(match => match.id !== 'ST01'), entries: state.entries.filter(entry => entry.matchId !== 'ST01'), expenses: [{ ...sampleExpense, matchId: null }] });
+  assert.equal(state.financeJournal[1].after.matchName, 'VC Nord');
+  assert.equal(state.financeJournal.at(-1).before.matchId, 'ST01');
+  assert.equal(state.financeJournal.at(-1).after.matchId, null);
+});
+
+test('Ungültige Journaldaten werden abgewiesen', () => {
+  const state = initializeFinanceJournal(exampleData());
+  for (const patch of [{ at: 'invalid' }, { deltaCents: 1 }, { kind: 'unknown' }, { after: null }, { balanceAfterCents: 1 }]) assert.throws(() => validateState({ ...state, financeJournal: [{ ...state.financeJournal[0], ...patch }] }));
+  assert.deepEqual(validateState({ ...state, financeJournal: [] }).financeJournal, []);
+  assert.throws(() => validateState({ ...state, financeJournal: {} }));
+  assert.throws(() => initializeFinanceJournal({ ...state, incomes: [sampleIncome] }), /aktuellen Kassenstand/);
+});
+
+test('Journal unterscheidet Spieler und Kasse auch bei gleichem Namen', () => {
+  const state = initializeFinanceJournal({ ...exampleData(), players: exampleData().players.map(player => player.id === 'P1' ? { ...player, name: 'Mannschaftskasse' } : player) });
+  const next = recordFinanceChanges(state, { ...state, expenses: [sampleExpense] });
+  assert.equal(next.financeJournal.at(-1).deltaCents, 0);
+  assert.equal(next.financeJournal.at(-1).after.paidFromTreasury, false);
+});
+
+test('Kassenreset löscht das Journal und setzt den Bestand dauerhaft auf null ohne Buchungen zu löschen', () => {
+  const state = initializeFinanceJournal({ ...exampleData(), treasuryOpeningBalanceCents: 5000, incomes: [sampleIncome], expenses: [{ ...sampleExpense, paidByPlayerId: null }] });
+  const reset = resetFinances(state, '2026-10-08T12:00:00.000Z');
+  assert.equal(reset.treasuryBalanceCents, 0);
+  assert.equal(reset.treasuryResetOffsetCents, -10750);
+  assert.equal(reset.treasuryResetAt, '2026-10-08T12:00:00.000Z');
+  assert.deepEqual(reset.financeJournal, []);
+  assert.deepEqual(reset.incomes, state.incomes);
+  assert.deepEqual(reset.expenses, state.expenses);
+  assert.equal(state.financeJournal.length, 1);
+  assert.deepEqual(initializeFinanceJournal(JSON.parse(JSON.stringify(reset))), reset);
+  const changed = recordFinanceChanges(reset, { ...reset, incomes: [...reset.incomes, { ...sampleIncome, id: 'I2', amountCents: 1000 }] });
+  assert.deepEqual(changed.financeJournal.map(entry => entry.deltaCents), [0, 1000]);
+  assert.equal(changed.treasuryBalanceCents, 1000);
+  assert.equal(changed.financeJournal[0].balanceAfterCents, 0);
+  assert.equal(resetFinances(changed).treasuryResetOffsetCents, -11750);
+  assert.deepEqual(recordFinanceChanges(reset, { ...reset, rate: 0.5 }).financeJournal, []);
+});
+
+test('Kassenreset unterstützt negative Kassenstände und prüft den gespeicherten Ausgleich', () => {
+  const state = initializeFinanceJournal({ ...exampleData(), expenses: [{ ...sampleExpense, paidByPlayerId: null }] });
+  assert.equal(resetFinances(state).treasuryBalanceCents, 0);
+  assert.equal(resetFinances(state).treasuryResetOffsetCents, 4250);
+  assert.throws(() => validateState({ ...state, treasuryResetOffsetCents: 1.5 }), /Reset-Ausgleich/);
+  assert.throws(() => validateState({ ...state, treasuryResetAt: 'invalid' }), /Reset-Zeitpunkt/);
+});
+
+test('Alte Zielkassen werden entfernt und alle Einnahmen ohne Datenverlust in der Mannschaftskasse berücksichtigt', () => {
+  const state = { ...exampleData(), treasuryOpeningBalanceCents: 5000, treasuryBalanceCents: 15000, clubIncomeTotalCents: 12345, incomes: [{ ...sampleIncome, destination: 'team' }, { ...sampleIncome, id: 'I2', destination: 'club', amountCents: 12345 }, { ...sampleIncome, id: 'I3', amountCents: 100 }] };
   const migrated = validateState(state);
-  assert.equal(migrated.incomes[0].destination, 'team');
-  assert.equal(migrated.treasuryBalanceCents, 10000);
-  assert.equal(migrated.clubIncomeTotalCents, 0);
-  assert.equal(state.incomes[0].destination, undefined);
-});
-
-test('Ungültige Zielkassen und Vereinskassen-Summen werden abgewiesen', () => {
-  for (const destination of ['unknown', null, '']) assert.throws(() => validateState({ ...exampleData(), incomes: [{ ...sampleIncome, destination }] }), /Zielkasse/);
-  for (const clubIncomeTotalCents of [-1, 1.5, '100']) assert.throws(() => validateState({ ...exampleData(), clubIncomeTotalCents }), /Vereinskasse/);
+  assert.equal(migrated.treasuryBalanceCents, 27445);
+  assert.equal(Object.hasOwn(migrated, 'clubIncomeTotalCents'), false);
+  assert.ok(migrated.incomes.every(income => !Object.hasOwn(income, 'destination')));
+  assert.deepEqual(migrated.incomes.map(income => income.id), ['I1', 'I2', 'I3']);
+  assert.equal(migrated.incomes[1].matchId, 'ST01');
+  assert.equal(migrated.incomes[1].amountCents, 12345);
+  assert.deepEqual(validateState(JSON.parse(JSON.stringify(migrated))), migrated);
+  assert.equal(state.clubIncomeTotalCents, 12345);
+  assert.equal(state.incomes[1].destination, 'club');
 });
 
 test('Einnahmen und Kassenstand werden centgenau gespeichert, offene Auslagen bleiben unberührt', () => {

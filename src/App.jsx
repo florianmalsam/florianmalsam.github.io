@@ -1,8 +1,9 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, LogOut, MapPin, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
-import { STORAGE_KEY, dutyPoints, exampleData, validateState, addPlayer, removePlayer, addEntry, updateEntry, matchFactor, playerMatchBreakdown, statistics, nextMatchId } from './model.js';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { STORAGE_KEY, dutyPoints, exampleData, validateState, addPlayer, removePlayer, addEntry, updateEntry, matchFactor, playerMatchBreakdown, statistics, nextMatchId, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
 import Expenses, { ExpenseForm, TreasurySummary, TreasuryForm } from './Expenses.jsx';
+import FinanceJournal from './FinanceJournal.jsx';
 
 const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(value);
 const euro = value => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
@@ -61,17 +62,43 @@ function Avatar({ name, index = 0, scoreSoll, scoreIst }) {
   return <span className={`avatar avatar-${index % 4}`} style={style} aria-hidden="true">{initials(name)}</span>;
 }
 
-function Modal({ title, children, onClose, wide = false }) {
+function Modal({ title, children, onClose, wide = false, dismissible = true }) {
   const ref = useRef(null);
   useEffect(() => {
     const dialog = ref.current;
     dialog.showModal();
     return () => dialog.close();
   }, []);
-  return <dialog ref={ref} className={`modal ${wide ? 'modal-wide' : ''}`} onCancel={onClose}>
-    <div className="modal-heading"><h2>{title}</h2><IconButton label="Schließen" onClick={onClose}><X size={20} /></IconButton></div>
+  return <dialog ref={ref} className={`modal ${wide ? 'modal-wide' : ''}`} onCancel={event => { if (dismissible) onClose(); else event.preventDefault(); }}>
+    <div className="modal-heading"><h2>{title}</h2><IconButton label="Schließen" disabled={!dismissible} onClick={onClose}><X size={20} /></IconButton></div>
     {children}
   </dialog>;
+}
+
+function ResetFinanceDialog({ onReset, onClose, onBackup }) {
+  const [password, setPassword] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return <Modal title="Kasse zurücksetzen?" onClose={onClose} dismissible={!busy}>
+    <p className="confirm-copy">Der gesamte Verlauf wird endgültig gelöscht und der Kassenstand auf 0 € gesetzt. Einnahmen und Ausgaben bleiben erhalten. Der Ausgleich wird als Kassenreset gespeichert.</p>
+    <button type="button" className="text-button" disabled={busy} onClick={onBackup}><ArrowDownToLine size={16} />Backup exportieren</button>
+    <form onSubmit={async event => {
+      event.preventDefault();
+      if (busy || !confirmed) return;
+      setBusy(true);
+      setError('');
+      try { await onReset(password); }
+      catch (caught) { setError(caught.message || 'Zurücksetzen nicht möglich. Bitte erneut versuchen.'); }
+      finally { setPassword(''); setBusy(false); }
+    }}>
+      <label className="reset-confirmation"><input type="checkbox" required checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} /><span>Verlauf endgültig löschen und Kasse auf 0 setzen</span></label>
+      <label className="field">Admin-Passwort<div className="password-field"><input autoFocus type={visible ? 'text' : 'password'} autoComplete="current-password" required disabled={busy} value={password} onChange={event => setPassword(event.target.value)} /><button type="button" disabled={busy} aria-label={visible ? 'Passwort verbergen' : 'Passwort anzeigen'} title={visible ? 'Passwort verbergen' : 'Passwort anzeigen'} onClick={() => setVisible(current => !current)}>{visible ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="modal-actions"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Abbrechen</button><button className="button danger" disabled={busy || !confirmed || !password}><Trash2 size={16} />{busy ? 'Wird zurückgesetzt …' : 'Endgültig zurücksetzen'}</button></div>
+    </form>
+  </Modal>;
 }
 
 function NumericInput({ value, onChange, label, integer = false, disabled = false, className = '', decimalPlaces = null }) {
@@ -163,8 +190,11 @@ function RosterPicker({ data, matchId, onSave, onClose, onNewPlayer }) {
   </Modal>;
 }
 
-export default function App({ initialData, persist, cloudStatus, readOnly = false, onSignOut } = {}) {
-  const [initial] = useState(() => initialData ? { data: validateState(initialData), warning: '' } : loadData());
+export default function App({ initialData, persist, cloudStatus, readOnly = false, onSignOut, onResetFinances } = {}) {
+  const [initial] = useState(() => {
+    const loaded = initialData ? { data: validateState(initialData), warning: '' } : loadData();
+    return { ...loaded, needsJournalSave: !readOnly && loaded.data.financeJournal === undefined, data: readOnly ? loaded.data : initializeFinanceJournal(loaded.data) };
+  });
   const [data, setData] = useState(initial.data);
   const [view, setView] = useState('matches');
   const [financeView, setFinanceView] = useState('expenses');
@@ -177,6 +207,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   const [notice, setNotice] = useState(initial.warning ? { text: initial.warning, error: true } : null);
   const [saveError, setSaveError] = useState(false);
   const fileInput = useRef(null);
+  const baselineSaved = useRef(false);
   const match = data.matches.find(item => item.id === selectedId);
   const totals = statistics(data).sort((first, second) => {
     const firstValue = first[statsSort.field];
@@ -197,10 +228,16 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
     return () => clearTimeout(timer);
   }, [notice]);
 
-  function commit(next, message) {
+  useEffect(() => {
+    if (!initial.needsJournalSave || baselineSaved.current) return;
+    baselineSaved.current = true;
+    commit(initial.data);
+  }, [initial]);
+
+  function commit(next, message, restoreJournal = false) {
     if (readOnly) return false;
     try {
-      const validated = validateState(next);
+      const validated = restoreJournal ? initializeFinanceJournal(next) : recordFinanceChanges(data, next);
       setData(validated);
       try {
         if (persist) persist(validated);
@@ -298,18 +335,18 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
             </div>
             <div className="roster-footer"><span><CheckCheck size={15} />{match.id} · {shortDate(match.date)}</span><span>{euro(matchEntries.reduce((total, entry) => total + entry.km, 0) * data.rate)} Fahrtkostenerstattung</span></div>
           </section>
-          <Expenses key={match.id} data={data} matchId={match.id} readOnly={readOnly} onAdd={() => setDialog({ type: 'expense', matchId: match.id })} onEdit={expense => setDialog({ type: 'expense', expense })} onDelete={expense => setDialog({ type: 'deleteExpense', expense })} />
-          <Expenses key={`income-${match.id}`} kind="income" data={data} matchId={match.id} readOnly={readOnly} onAdd={() => setDialog({ type: 'income', matchId: match.id })} onEdit={income => setDialog({ type: 'income', income })} onDelete={income => setDialog({ type: 'deleteIncome', income })} />
+          <Expenses key={match.id} data={data} matchId={match.id} readOnly={readOnly} onAdd={() => setDialog({ type: 'expense', matchId: match.id })} onEdit={expense => setDialog({ type: 'expense', expense })} onDelete={expense => setDialog({ type: 'deleteExpense', expense })} onHistory={expense => setDialog({ type: 'financeHistory', kind: 'expense', item: expense })} />
+          <Expenses key={`income-${match.id}`} kind="income" data={data} matchId={match.id} readOnly={readOnly} onAdd={() => setDialog({ type: 'income', matchId: match.id })} onEdit={income => setDialog({ type: 'income', income })} onDelete={income => setDialog({ type: 'deleteIncome', income })} onHistory={income => setDialog({ type: 'financeHistory', kind: 'income', item: income })} />
           <div className="match-bottom"><span className="tiny-label">MANNSCHAFTSBILANZ</span><button className="text-button" onClick={() => { setView('team'); setQuery(''); }}>Zur Gesamtübersicht <ChevronRight size={16} /></button></div>
         </> : <div className="empty-state page-empty"><CalendarDays size={40} /><h2>Dein erster Spieltag</h2><button className="button primary" disabled={readOnly} onClick={() => setDialog({ type: 'match' })}><Plus size={17} />Spieltag anlegen</button></div>}
       </main>
     </div> : view === 'expenses' ? <main className="team-page expenses-page">
       <div className="breadcrumb">Dein Team <ChevronRight size={13} /><span>Finanzen</span></div>
-      <div className="team-heading"><div><span className="eyebrow">MANNSCHAFTSFINANZEN</span><h1>Kassenübersicht</h1></div></div>
+      <div className="team-heading"><div><span className="eyebrow">MANNSCHAFTSFINANZEN</span><h1>Mannschaftskasse</h1></div><button className="button secondary danger-hover" title={!onResetFinances ? 'Nur mit Admin-Anmeldung verfügbar' : 'Verlauf löschen und Kasse auf 0 setzen'} disabled={readOnly || !onResetFinances || cloudStatus === 'saving' || cloudStatus === 'error'} onClick={() => setDialog({ type: 'resetFinances' })}><Trash2 size={17} />Kasse zurücksetzen</button></div>
       <TreasurySummary data={data} readOnly={readOnly} onEdit={() => setDialog({ type: 'treasury' })} />
-      <div className="finance-tabs" role="tablist" aria-label="Finanzbuchungen"><button id="expenses-tab" role="tab" aria-selected={financeView === 'expenses'} aria-controls="finance-panel" onClick={() => setFinanceView('expenses')}><ArrowUp size={16} />Ausgaben</button><button id="incomes-tab" role="tab" aria-selected={financeView === 'incomes'} aria-controls="finance-panel" onClick={() => setFinanceView('incomes')}><ArrowDown size={16} />Einnahmen</button></div>
-      <div id="finance-panel" role="tabpanel" aria-labelledby={financeView === 'expenses' ? 'expenses-tab' : 'incomes-tab'}>
-        {financeView === 'expenses' ? <Expenses key="expenses" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'expense' })} onEdit={expense => setDialog({ type: 'expense', expense })} onDelete={expense => setDialog({ type: 'deleteExpense', expense })} /> : <Expenses key="incomes" kind="income" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'income' })} onEdit={income => setDialog({ type: 'income', income })} onDelete={income => setDialog({ type: 'deleteIncome', income })} />}
+      <div className="finance-tabs" role="tablist" aria-label="Finanzbuchungen"><button id="expenses-tab" role="tab" aria-selected={financeView === 'expenses'} aria-controls="finance-panel" onClick={() => setFinanceView('expenses')}><ArrowUp size={16} />Ausgaben</button><button id="incomes-tab" role="tab" aria-selected={financeView === 'incomes'} aria-controls="finance-panel" onClick={() => setFinanceView('incomes')}><ArrowDown size={16} />Einnahmen</button><button id="history-tab" role="tab" aria-selected={financeView === 'history'} aria-controls="finance-panel" onClick={() => setFinanceView('history')}><History size={16} />Verlauf</button></div>
+      <div id="finance-panel" role="tabpanel" aria-labelledby={financeView === 'expenses' ? 'expenses-tab' : financeView === 'incomes' ? 'incomes-tab' : 'history-tab'}>
+        {financeView === 'history' ? <FinanceJournal data={data} /> : financeView === 'expenses' ? <Expenses key="expenses" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'expense' })} onEdit={expense => setDialog({ type: 'expense', expense })} onDelete={expense => setDialog({ type: 'deleteExpense', expense })} onHistory={expense => setDialog({ type: 'financeHistory', kind: 'expense', item: expense })} /> : <Expenses key="incomes" kind="income" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'income' })} onEdit={income => setDialog({ type: 'income', income })} onDelete={income => setDialog({ type: 'deleteIncome', income })} onHistory={income => setDialog({ type: 'financeHistory', kind: 'income', item: income })} />}
       </div>
     </main> : <main className="team-page">
       <div className="breadcrumb">Dein Team <ChevronRight size={13} /><span>Mannschaft</span></div>
@@ -335,7 +372,16 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
     {dialog?.type === 'expense' && <Modal title={dialog.expense ? 'Ausgabe bearbeiten' : 'Neue Ausgabe'} onClose={closeDialog}><ExpenseForm data={data} expense={dialog.expense} matchId={dialog.matchId} onClose={closeDialog} onSave={next => { if (commit(next, 'Ausgabe gespeichert.')) closeDialog(); }} /></Modal>}
     {dialog?.type === 'income' && <Modal title={dialog.income ? 'Einnahme bearbeiten' : 'Neue Einnahme'} onClose={closeDialog}><ExpenseForm kind="income" data={data} expense={dialog.income} matchId={dialog.matchId} onClose={closeDialog} onSave={next => { if (commit(next, 'Einnahme gespeichert.')) closeDialog(); }} /></Modal>}
     {dialog?.type === 'treasury' && <Modal title="Anfangsbestand bearbeiten" onClose={closeDialog}><TreasuryForm data={data} onClose={closeDialog} onSave={next => { if (commit(next, 'Anfangsbestand gespeichert.')) closeDialog(); }} /></Modal>}
-    {dialog?.type === 'deleteIncome' && <Modal title="Einnahme löschen?" onClose={closeDialog}><p className="confirm-copy">{dialog.income.description} wird endgültig gelöscht. {dialog.income.destination === 'club' ? 'Die erfassten Einnahmen der Vereinskasse werden entsprechend reduziert.' : 'Der Mannschaftskassenstand wird entsprechend reduziert.'}</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button danger" disabled={readOnly} onClick={() => { if (commit({ ...data, incomes: data.incomes.filter(income => income.id !== dialog.income.id) }, 'Einnahme gelöscht.')) closeDialog(); }}><Trash2 size={16} />Endgültig löschen</button></div></Modal>}
+    {dialog?.type === 'resetFinances' && <ResetFinanceDialog onClose={closeDialog} onBackup={exportData} onReset={async password => {
+      if (readOnly || !onResetFinances) throw new Error('Nur der angemeldete Admin darf die Kasse zurücksetzen.');
+      const next = resetFinances(data);
+      await onResetFinances(password, next);
+      setData(next);
+      closeDialog();
+      setNotice({ text: 'Verlauf gelöscht und Kasse auf 0 gesetzt.' });
+    }} />}
+    {dialog?.type === 'financeHistory' && <Modal wide title={`Verlauf: ${dialog.item.description}`} onClose={closeDialog}><FinanceJournal data={data} entity={{ kind: dialog.kind, id: dialog.item.id }} /></Modal>}
+    {dialog?.type === 'deleteIncome' && <Modal title="Einnahme löschen?" onClose={closeDialog}><p className="confirm-copy">{dialog.income.description} wird endgültig gelöscht. Der Mannschaftskassenstand wird entsprechend reduziert.</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button danger" disabled={readOnly} onClick={() => { if (commit({ ...data, incomes: data.incomes.filter(income => income.id !== dialog.income.id) }, 'Einnahme gelöscht.')) closeDialog(); }}><Trash2 size={16} />Endgültig löschen</button></div></Modal>}
     {dialog?.type === 'deleteExpense' && <Modal title="Ausgabe löschen?" onClose={closeDialog}><p className="confirm-copy">{dialog.expense.description} wird endgültig gelöscht.</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button danger" disabled={readOnly} onClick={() => { if (commit({ ...data, expenses: data.expenses.filter(expense => expense.id !== dialog.expense.id) }, 'Ausgabe gelöscht.')) closeDialog(); }}><Trash2 size={16} />Endgültig löschen</button></div></Modal>}
     {dialog?.type === 'roster' && <RosterPicker data={data} matchId={selectedId} onClose={closeDialog} onNewPlayer={() => setDialog({ type: 'player', fromRoster: true })} onSave={next => { if (commit(next, 'Aufstellung ergänzt.')) closeDialog(); }} />}
     {['deletePlayer', 'deleteMatch', 'removeEntry'].includes(dialog?.type) && <Modal title={dialog.type === 'deletePlayer' ? 'Spieler löschen?' : dialog.type === 'deleteMatch' ? 'Spieltag löschen?' : 'Spieler entfernen?'} onClose={closeDialog}><p className="confirm-copy">{dialog.type === 'deletePlayer' ? `${dialog.player.name} und alle zugehörigen Einsätze werden endgültig gelöscht.` : dialog.type === 'deleteMatch' ? `${dialog.match.id} gegen ${dialog.match.opponent} und alle zugehörigen Einsätze werden endgültig gelöscht. Ausgaben und Einnahmen bleiben ohne Spieltagsbezug erhalten.` : `Der Eintrag von ${dialog.player.name} für ${selectedId} wird gelöscht. Der Spieler bleibt in der Mannschaft.`}</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button danger" onClick={() => {
@@ -349,6 +395,6 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       if (dialog.type === 'deleteMatch' && data.incomes) next.incomes = data.incomes.map(income => income.matchId === dialog.match.id ? { ...income, matchId: null } : income);
       if (commit(next, 'Eintrag gelöscht.')) { if (dialog.type === 'deleteMatch') chooseMatch(next.matches[0]?.id || null); closeDialog(); }
     }}><Trash2 size={16} />{dialog.type === 'removeEntry' ? 'Entfernen' : 'Endgültig löschen'}</button></div></Modal>}
-    {dialog?.type === 'import' && <Modal title="Backup wiederherstellen?" onClose={closeDialog}><p className="confirm-copy">{dialog.data.players.length} Spieler, {dialog.data.matches.length} Spieltage, {dialog.data.entries.length} Einsätze, {dialog.data.expenses?.length || 0} Ausgaben und {dialog.data.incomes?.length || 0} Einnahmen werden geladen. Die aktuellen Daten einschließlich Mannschaftskasse werden vollständig ersetzt.</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button primary" onClick={() => { if (commit(dialog.data, 'Backup wiederhergestellt.')) { chooseMatch(dialog.data.matches[0]?.id || null); setView('matches'); closeDialog(); } }}><ArrowUpFromLine size={16} />Wiederherstellen</button></div></Modal>}
+    {dialog?.type === 'import' && <Modal title="Backup wiederherstellen?" onClose={closeDialog}><p className="confirm-copy">{dialog.data.players.length} Spieler, {dialog.data.matches.length} Spieltage, {dialog.data.entries.length} Einsätze, {dialog.data.expenses?.length || 0} Ausgaben und {dialog.data.incomes?.length || 0} Einnahmen werden geladen. Die aktuellen Daten einschließlich Mannschaftskasse und Verlauf werden vollständig ersetzt.</p><div className="modal-actions"><button className="button secondary" onClick={closeDialog}>Abbrechen</button><button className="button primary" onClick={() => { if (commit(dialog.data, 'Backup wiederhergestellt.', true)) { chooseMatch(dialog.data.matches[0]?.id || null); setView('matches'); closeDialog(); } }}><ArrowUpFromLine size={16} />Wiederherstellen</button></div></Modal>}
   </div>;
 }

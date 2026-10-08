@@ -259,11 +259,7 @@ input::placeholder { color: #7891b5; }
 @keyframes enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 .main-content, .team-page { animation: enter .3s ease-out; }
 .expenses-section { padding-top: 32px; min-width: 0; }
-.cash-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 24px 0; margin: 24px 0 0; border-block: 1px solid var(--line); }
-.cash-overview > section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.cash-overview span { color: var(--muted); font-size: 11px; }
-.cash-overview strong { font-size: 26px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.treasury-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding: 20px 0; margin: 0 0 24px; border-bottom: 1px solid var(--line); }
+.treasury-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; padding: 24px 0; margin: 24px 0; border-block: 1px solid var(--line); }
 .treasury-summary > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .treasury-summary span { color: var(--muted); font-size: 11px; min-height: 24px; display: flex; align-items: center; }
 .treasury-summary strong { font-size: 22px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -271,9 +267,30 @@ input::placeholder { color: #7891b5; }
 .treasury-balance .negative-balance { color: #b44f3b; }
 .treasury-opening-label { gap: 6px; }
 .treasury-opening-label .icon-button { height: 24px; width: 24px; }
+.treasury-reset-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: -12px 0 24px; color: var(--muted); font-size: 11px; }
+.treasury-reset-note strong { font-variant-numeric: tabular-nums; }
+.reset-confirmation { display: flex; align-items: flex-start; gap: 9px; margin: 20px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.reset-confirmation input { width: 16px; height: 16px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--green); }
+.expenses-page .team-heading { flex-wrap: wrap; }
 .finance-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); }
 .finance-tabs button { display: flex; align-items: center; gap: 7px; padding: 12px 0; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; }
 .finance-tabs button[aria-selected="true"] { color: var(--green); border-bottom-color: var(--green); font-weight: 700; }
+.journal-section { padding-top: 28px; min-width: 0; }
+.journal-table { min-width: 820px; }
+.journal-timestamp { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.journal-description { min-width: 250px; max-width: 380px; }
+.journal-description > strong { font-weight: 600; }
+.expense-table .journal-positive { color: #248455; }
+.expense-table .journal-negative { color: #b44f3b; }
+.journal-details { margin-top: 8px; }
+.journal-details > summary { cursor: pointer; color: var(--green); font-size: 11px; width: fit-content; }
+.journal-change-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+.journal-table .journal-change-table th, .journal-table .journal-change-table td { padding: 7px 5px; background: transparent; font-size: 11px; font-weight: 400; white-space: pre-wrap; overflow-wrap: anywhere; }
+.journal-change-table th:first-child { width: 30%; }
+.expense-filters > .journal-cash-filter { flex-direction: row; align-items: center; align-self: center; gap: 7px; }
+.journal-cash-filter input { width: 16px; height: 16px; accent-color: var(--green); }
+.modal-wide { width: min(1040px, calc(100% - 32px)); }
+.modal .journal-section { padding-top: 0; }
 .expense-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-block: 1px solid var(--line); margin-bottom: 22px; padding: 18px 0; gap: 20px; }
 .expense-summary > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .expense-summary span { color: var(--muted); font-size: 11px; }
@@ -306,7 +323,6 @@ input::placeholder { color: #7891b5; }
   .main-nav button { gap: 6px; font-size: 11px; }
 }
 @media (max-width: 600px) {
-  .cash-overview { grid-template-columns: 1fr; }
   .treasury-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .treasury-summary strong { font-size: 20px; }
   .expenses-section .section-heading { flex-wrap: wrap; }

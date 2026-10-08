@@ -2,8 +2,59 @@ export const STORAGE_KEY = 'seitenwechsel-v1';
 export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, drive: 1 };
 export const EXPENSE_CATEGORIES = { catering: 'Verpflegung', marketing: 'Marketing', equipment: 'Material', other: 'Sonstiges' };
 export const INCOME_CATEGORIES = { catering: 'Verpflegung', sponsorship: 'Sponsoring', contribution: 'Beiträge', donation: 'Spenden', other: 'Sonstiges' };
-export const INCOME_DESTINATIONS = { team: 'Mannschaftskasse', club: 'Vereinskasse' };
 export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', reimbursed: 'Erstattet' };
+export const JOURNAL_ACTIONS = { baseline: 'Startbestand', create: 'Angelegt', update: 'Geändert', delete: 'Gelöscht' };
+export const JOURNAL_KINDS = { treasury: 'Kasse', opening: 'Anfangsbestand', income: 'Einnahme', expense: 'Ausgabe' };
+
+function journalSnapshot(state, kind, item) {
+  if (!item) return null;
+  const snapshot = { id: item.id, date: item.date, description: item.description, amountCents: item.amountCents, category: item.category, matchId: item.matchId, note: item.note, matchName: state.matches.find(match => match.id === item.matchId)?.opponent || '' };
+  if (kind === 'expense') Object.assign(snapshot, { paidByPlayerId: item.paidByPlayerId ?? null, paidFromTreasury: item.paidByPlayerId === null, paidByName: expensePayer(state, item), reimbursementStatus: item.reimbursementStatus });
+  return snapshot;
+}
+
+function journalImpact(kind, snapshot) {
+  if (!snapshot) return 0;
+  if (kind !== 'expense') return snapshot.amountCents;
+  return snapshot.paidFromTreasury || snapshot.reimbursementStatus === 'reimbursed' ? -snapshot.amountCents : 0;
+}
+
+export function initializeFinanceJournal(state, at = new Date().toISOString()) {
+  const current = validateState(state);
+  if (current.financeJournal !== undefined) {
+    if (current.financeJournal.length && current.financeJournal.at(-1).balanceAfterCents !== current.treasuryBalanceCents) throw new Error('Das Kassenjournal stimmt nicht mit dem aktuellen Kassenstand überein.');
+    return current;
+  }
+  return validateState({ ...current, financeJournal: [{ id: crypto.randomUUID(), at, action: 'baseline', kind: 'treasury', entityId: null, before: null, after: { amountCents: current.treasuryBalanceCents }, deltaCents: 0, balanceBeforeCents: current.treasuryBalanceCents, balanceAfterCents: current.treasuryBalanceCents }] });
+}
+
+export function recordFinanceChanges(previous, state, at = new Date().toISOString()) {
+  const current = initializeFinanceJournal(previous, at);
+  const next = validateState(state);
+  const financeJournal = [...current.financeJournal];
+  let balance = current.treasuryBalanceCents;
+  function append(kind, entityId, before, after) {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    if (!financeJournal.length) financeJournal.push(initializeFinanceJournal({ ...current, financeJournal: undefined }, at).financeJournal[0]);
+    const deltaCents = journalImpact(kind, after) - journalImpact(kind, before);
+    const balanceAfterCents = balance + deltaCents;
+    financeJournal.push({ id: crypto.randomUUID(), at, action: before === null ? 'create' : after === null ? 'delete' : 'update', kind, entityId, before, after, deltaCents, balanceBeforeCents: balance, balanceAfterCents });
+    balance = balanceAfterCents;
+  }
+  if (current.treasuryOpeningBalanceCents !== next.treasuryOpeningBalanceCents) append('opening', null, { amountCents: current.treasuryOpeningBalanceCents }, { amountCents: next.treasuryOpeningBalanceCents });
+  for (const [kind, collection] of [['income', 'incomes'], ['expense', 'expenses']]) {
+    const oldItems = new Map((current[collection] || []).map(item => [item.id, item]));
+    const newItems = new Map((next[collection] || []).map(item => [item.id, item]));
+    for (const id of new Set([...oldItems.keys(), ...newItems.keys()])) append(kind, id, journalSnapshot(current, kind, oldItems.get(id)), journalSnapshot(next, kind, newItems.get(id)));
+  }
+  if (balance !== next.treasuryBalanceCents) throw new Error('Die protokollierte Kassenänderung stimmt nicht mit dem Kassenstand überein.');
+  return validateState({ ...next, financeJournal });
+}
+
+export function resetFinances(state, at = new Date().toISOString()) {
+  const current = initializeFinanceJournal(state);
+  return validateState({ ...current, financeJournal: [], treasuryResetOffsetCents: (current.treasuryResetOffsetCents ?? 0) - current.treasuryBalanceCents, treasuryResetAt: at, treasuryBalanceCents: 0 });
+}
 
 export function moneyCents(value, allowNegative = false) {
   const text = value.trim();
@@ -14,15 +65,15 @@ export function moneyCents(value, allowNegative = false) {
   return amount;
 }
 
-export function incomeTotal(incomes = [], destination) {
-  return incomes.reduce((total, income) => total + (destination === undefined || (income.destination ?? 'team') === destination ? income.amountCents : 0), 0);
+export function incomeTotal(incomes = []) {
+  return incomes.reduce((total, income) => total + income.amountCents, 0);
 }
 
 export function treasuryTotals(state) {
   const openingCents = state.treasuryOpeningBalanceCents ?? 0;
-  const incomeCents = incomeTotal(state.incomes, 'team');
+  const incomeCents = incomeTotal(state.incomes);
   const paidCents = (state.expenses || []).reduce((total, expense) => total + (expense.paidByPlayerId === null || expense.reimbursementStatus === 'reimbursed' ? expense.amountCents : 0), 0);
-  return { openingCents, incomeCents, paidCents, balanceCents: openingCents + incomeCents - paidCents };
+  return { openingCents, incomeCents, paidCents, balanceCents: openingCents + incomeCents - paidCents + (state.treasuryResetOffsetCents ?? 0) };
 }
 
 export function expenseTotals(expenses = []) {
@@ -44,7 +95,6 @@ export function exampleData() {
     incomes: [],
     treasuryOpeningBalanceCents: 0,
     treasuryBalanceCents: 0,
-    clubIncomeTotalCents: 0,
     dutyPoints: { ...DEFAULT_DUTY_POINTS },
     players: ['Anna', 'Ben', 'Clara', 'David'].map((name, index) => ({ id: `P${index + 1}`, name })),
     matches: [
@@ -138,14 +188,14 @@ export function validateState(state) {
     if (typeof income.description !== 'string' || !income.description.trim()) throw new Error('Die Beschreibung darf nicht leer sein.');
     if (!Number.isSafeInteger(income.amountCents) || income.amountCents <= 0) throw new Error('Der Einnahmenbetrag muss ein positiver ganzer Centbetrag sein.');
     if (!Object.hasOwn(INCOME_CATEGORIES, income.category)) throw new Error('Bitte eine gültige Einnahmenkategorie wählen.');
-    if (income.destination !== undefined && !Object.hasOwn(INCOME_DESTINATIONS, income.destination)) throw new Error('Bitte eine gültige Zielkasse wählen.');
     if (income.matchId !== null && !matchIds.has(income.matchId)) throw new Error('Die Einnahme verweist auf einen unbekannten Spieltag.');
     if (typeof income.note !== 'string') throw new Error('Die Einnahmennotiz muss Text sein.');
   }
   if (!Number.isSafeInteger(incomeTotal(state.incomes))) throw new Error('Die Einnahmensumme ist zu groß.');
   if (state.treasuryOpeningBalanceCents !== undefined && !Number.isSafeInteger(state.treasuryOpeningBalanceCents)) throw new Error('Der Anfangsbestand muss ein ganzer Centbetrag sein.');
   if (state.treasuryBalanceCents !== undefined && !Number.isSafeInteger(state.treasuryBalanceCents)) throw new Error('Der Kassenstand muss ein ganzer Centbetrag sein.');
-  if (state.clubIncomeTotalCents !== undefined && (!Number.isSafeInteger(state.clubIncomeTotalCents) || state.clubIncomeTotalCents < 0)) throw new Error('Die Einnahmensumme der Vereinskasse muss ein nichtnegativer ganzer Centbetrag sein.');
+  if (state.treasuryResetOffsetCents !== undefined && !Number.isSafeInteger(state.treasuryResetOffsetCents)) throw new Error('Der Reset-Ausgleich muss ein ganzer Centbetrag sein.');
+  if (state.treasuryResetAt !== undefined && (typeof state.treasuryResetAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(state.treasuryResetAt) || !Number.isFinite(Date.parse(state.treasuryResetAt)) || new Date(state.treasuryResetAt).toISOString() !== state.treasuryResetAt)) throw new Error('Ungültiger Reset-Zeitpunkt.');
   let next = state;
   if (state.expenses?.some(expense => expense.paidByPlayerId === undefined)) {
     const expenses = state.expenses.map(expense => {
@@ -158,11 +208,44 @@ export function validateState(state) {
     });
     next = { ...state, expenses };
   }
-  if (next.incomes?.some(income => income.destination === undefined)) next = { ...next, incomes: next.incomes.map(income => income.destination === undefined ? { ...income, destination: 'team' } : income) };
+  if (next.incomes?.some(income => Object.hasOwn(income, 'destination'))) next = { ...next, incomes: next.incomes.map(income => {
+    const { destination, ...rest } = income;
+    return rest;
+  }) };
+  if (Object.hasOwn(next, 'clubIncomeTotalCents')) {
+    const { clubIncomeTotalCents, ...rest } = next;
+    next = rest;
+  }
   const balance = treasuryTotals(next).balanceCents;
-  const clubIncomeTotalCents = incomeTotal(next.incomes, 'club');
   if (!Number.isSafeInteger(balance)) throw new Error('Der Kassenstand ist zu groß.');
-  if (next.incomes === undefined || next.treasuryOpeningBalanceCents === undefined || next.treasuryBalanceCents !== balance || next.clubIncomeTotalCents !== clubIncomeTotalCents) next = { ...next, incomes: next.incomes ?? [], treasuryOpeningBalanceCents: next.treasuryOpeningBalanceCents ?? 0, treasuryBalanceCents: balance, clubIncomeTotalCents };
+  if (next.incomes === undefined || next.treasuryOpeningBalanceCents === undefined || next.treasuryBalanceCents !== balance) next = { ...next, incomes: next.incomes ?? [], treasuryOpeningBalanceCents: next.treasuryOpeningBalanceCents ?? 0, treasuryBalanceCents: balance };
+  if (next.financeJournal !== undefined) {
+    if (!Array.isArray(next.financeJournal)) throw new Error('Das Kassenjournal muss eine Liste sein.');
+    const journalIds = new Set();
+    let lastBalance;
+    for (const [index, entry] of next.financeJournal.entries()) {
+      if (!entry || typeof entry.id !== 'string' || !entry.id || journalIds.has(entry.id)) throw new Error('Journal-IDs müssen eindeutig sein.');
+      journalIds.add(entry.id);
+      if (typeof entry.at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(entry.at) || !Number.isFinite(Date.parse(entry.at)) || new Date(entry.at).toISOString() !== entry.at) throw new Error('Bitte einen gültigen Journalzeitpunkt wählen.');
+      if (!Object.hasOwn(JOURNAL_ACTIONS, entry.action) || !Object.hasOwn(JOURNAL_KINDS, entry.kind)) throw new Error('Ungültiger Journalvorgang.');
+      if (![entry.deltaCents, entry.balanceBeforeCents, entry.balanceAfterCents].every(Number.isSafeInteger) || entry.balanceBeforeCents + entry.deltaCents !== entry.balanceAfterCents || (index > 0 && entry.balanceBeforeCents !== lastBalance)) throw new Error('Ungültige Kassenstände im Journal.');
+      if (index === 0 ? entry.action !== 'baseline' || entry.kind !== 'treasury' || entry.deltaCents !== 0 : entry.action === 'baseline' || entry.kind === 'treasury') throw new Error('Ungültiger Journalstart.');
+      if (entry.kind === 'income' || entry.kind === 'expense') {
+        if (typeof entry.entityId !== 'string' || !entry.entityId) throw new Error('Journalbuchungen benötigen eine Buchungs-ID.');
+      } else if (entry.entityId !== null) throw new Error('Ungültiger Kassenverweis im Journal.');
+      for (const snapshot of [entry.before, entry.after]) {
+        if (snapshot === null) continue;
+        if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || !Number.isSafeInteger(snapshot.amountCents)) throw new Error('Ungültige Journalwerte.');
+        if (entry.kind === 'income' || entry.kind === 'expense') {
+          if (snapshot.id !== entry.entityId || snapshot.amountCents <= 0 || typeof snapshot.description !== 'string' || typeof snapshot.date !== 'string' || typeof snapshot.note !== 'string' || typeof snapshot.matchName !== 'string' || !Object.hasOwn(entry.kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES, snapshot.category) || (snapshot.matchId !== null && typeof snapshot.matchId !== 'string')) throw new Error('Ungültige Buchung im Journal.');
+          if (entry.kind === 'expense' && (typeof snapshot.paidFromTreasury !== 'boolean' || typeof snapshot.paidByName !== 'string' || !Object.hasOwn(REIMBURSEMENT_STATUSES, snapshot.reimbursementStatus))) throw new Error('Ungültige Erstattung im Journal.');
+        }
+      }
+      if (entry.action === 'baseline' || entry.action === 'create' ? entry.before !== null || entry.after === null : entry.action === 'delete' ? entry.before === null || entry.after !== null : entry.before === null || entry.after === null) throw new Error('Ungültige Vorher-/Nachher-Werte im Journal.');
+      if (entry.action === 'baseline' ? entry.after.amountCents !== entry.balanceAfterCents : journalImpact(entry.kind, entry.after) - journalImpact(entry.kind, entry.before) !== entry.deltaCents) throw new Error('Ungültige Betragsänderung im Journal.');
+      lastBalance = entry.balanceAfterCents;
+    }
+  }
   return next;
 }
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, Eye, EyeOff, LockKeyhole, LogIn, RefreshCw } from 'lucide-react';
 import App from './App.jsx';
-import { cloud, configured, readerEmail, teamEmail } from './cloud.js';
+import { cloud, configured, readerEmail, teamEmail, reauthenticateAdmin } from './cloud.js';
 import { exampleData, validateState } from './model.js';
 import { createSaveQueue } from './save-queue.js';
 
@@ -141,9 +141,19 @@ function RemoteWorkspace({ user }) {
     const result = await cloud.auth.signOut({ scope: 'local' });
     if (result.error && mounted.current) setError({ source: 'logout', text: 'Abmelden ist fehlgeschlagen. Bitte versuche es erneut.' });
   }
+  async function resetTeamFinances(password, next) {
+    if (readOnly.current || user.id !== ownerId.current || user.email?.toLocaleLowerCase('en-US') !== teamEmail?.toLocaleLowerCase('en-US')) throw new Error('Nur der angemeldete Admin darf die Kasse zurücksetzen.');
+    const activeQueue = queue.current;
+    if (!activeQueue || statusRef.current !== 'saved') throw new Error('Bitte warten, bis alle Änderungen gespeichert sind.');
+    const revision = activeQueue.revision();
+    await reauthenticateAdmin(password, user.id);
+    if (!mounted.current || queue.current !== activeQueue || activeQueue.revision() !== revision || statusRef.current !== 'saved') throw new Error('Der Datenstand hat sich geändert. Bitte erneut versuchen.');
+    await activeQueue.enqueue(next);
+    if (statusRef.current !== 'saved') throw new Error('Der Reset konnte nicht gespeichert werden.');
+  }
   if (!loaded && !error) return <Gate><div className="login-title"><RefreshCw className="spinning" size={23} /><h1>Mannschaft wird geladen …</h1></div></Gate>;
   return <>
-    {loaded && !error && <App key={`${user.id}:${loaded.revision}`} initialData={loaded.readOnly ? loaded.data : queue.current?.latest() || loaded.data} persist={loaded.readOnly ? undefined : next => queue.current.enqueue(next)} cloudStatus={status} readOnly={loaded.readOnly} onSignOut={signOut} />}
+    {loaded && !error && <App key={`${user.id}:${loaded.revision}`} initialData={loaded.readOnly ? loaded.data : queue.current?.latest() || loaded.data} persist={loaded.readOnly ? undefined : next => queue.current.enqueue(next)} cloudStatus={status} readOnly={loaded.readOnly} onSignOut={signOut} onResetFinances={loaded.readOnly ? undefined : resetTeamFinances} />}
     {error && <div className="cloud-error-backdrop"><section className="cloud-error" role="alertdialog" aria-modal="true" aria-labelledby="cloud-error-title" tabIndex={-1} ref={element => element?.focus()}><LockKeyhole size={25} /><h2 id="cloud-error-title">{error.conflict ? 'Neuerer Datenstand vorhanden' : error.source === 'save' ? 'Nicht gespeichert' : 'Verbindung unterbrochen'}</h2><p>{error.text}</p><div className="cloud-error-actions">{queue.current?.latest() && <button className="button secondary" onClick={() => downloadBackup(queue.current.latest())}><ArrowDownToLine size={17} />Änderungen sichern</button>}{error.source === 'save' && !error.conflict ? <button className="button primary" onClick={() => { setError(null); queue.current.retry(); }}><RefreshCw size={17} />Erneut speichern</button> : <button className="button primary" onClick={() => window.location.reload()}><RefreshCw size={17} />Neu laden</button>}</div></section></div>}
   </>;
 }

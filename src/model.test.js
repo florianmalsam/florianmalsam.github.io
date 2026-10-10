@@ -241,10 +241,44 @@ test('Neue Spieler und Dienste ohne Teilnahme aktualisieren die Statistik', () =
   assert.equal(stats.table, 1);
 });
 
+test('Tablet-Dienste sind rückwärtskompatibel und nutzen konfigurierbare Punkte', () => {
+  const original = exampleData();
+  const originalFactor = matchFactor(original, 'ST01');
+  const originalScore = statistics(original)[0].scoreIst;
+  assert.equal(validateState(original).entries[0].tablet, undefined);
+  assert.equal(statistics(original)[0].tablet, 0);
+  const state = updateEntry(original, 'ST01', 'P1', { tablet: 1 });
+  assert.equal(matchFactor(state, 'ST01'), originalFactor + .25);
+  assert.equal(statistics(state)[0].scoreIst, originalScore + 1);
+  const configured = validateState({ ...state, dutyPoints: { tablet: 4 } });
+  assert.equal(matchFactor(configured, 'ST01'), originalFactor + 1);
+  assert.equal(statistics(configured)[0].scoreIst, originalScore + 4);
+  assert.equal(statistics(configured)[0].tablet, 1);
+  assert.equal(playerMatchBreakdown(configured, 'P1')[0].beitrag, playerMatchBreakdown(original, 'P1')[0].beitrag + 4);
+  assert.equal(playerMatchBreakdown(configured, 'P1')[0].zielbeitrag, originalFactor + 1);
+  assert.equal(validateState(JSON.parse(JSON.stringify(configured))).entries[0].tablet, 1);
+  assert.throws(() => updateEntry(original, 'ST01', 'P1', { tablet: -1 }), /Dienste/);
+  assert.throws(() => updateEntry(original, 'ST01', 'P1', { tablet: 1.5 }), /Dienste/);
+  assert.throws(() => validateState({ ...state, dutyPoints: { tablet: -1 } }), /Dienstpunkte/);
+});
+
 test('Extra-Punkte werden als nichtnegative ganze Zahlen validiert', () => {
   const state = exampleData();
   assert.throws(() => updateEntry(state, 'ST01', 'P1', { extra: 1.5 }), /Extra-Punkte/);
   assert.throws(() => updateEntry(state, 'ST01', 'P1', { extra: -1 }), /Extra-Punkte/);
+});
+
+test('Extra-Beschreibungen sind optional und bleiben beim Speichern und Dienstwechsel erhalten', () => {
+  const original = exampleData();
+  assert.equal(validateState(original).entries[0].extraDescription, undefined);
+  const described = updateEntry(original, 'ST01', 'P1', { extra: 2, extraDescription: 'Trikots gewaschen' });
+  const restored = validateState(JSON.parse(JSON.stringify(described)));
+  const changed = updateEntry(restored, 'ST01', 'P1', { ref1: 0, ref2: 0, table: 0, lines: 1 });
+  assert.equal(changed.entries[0].extraDescription, 'Trikots gewaschen');
+  assert.equal(changed.entries[0].extra, 2);
+  assert.equal(statistics(changed)[0].scoreIst, statistics(updateEntry(original, 'ST01', 'P1', { ref1: 0, lines: 1, extra: 2 }))[0].scoreIst);
+  assert.equal(updateEntry(changed, 'ST01', 'P1', { extraDescription: '' }).entries[0].extraDescription, '');
+  assert.throws(() => updateEntry(original, 'ST01', 'P1', { extraDescription: 3 }), /Extra-Beschreibung/);
 });
 
 test('Nur Fahrer haben Kilometer, Dienste bleiben nichtnegative ganze Zahlen', () => {

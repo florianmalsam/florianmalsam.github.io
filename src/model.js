@@ -1,5 +1,5 @@
 export const STORAGE_KEY = 'seitenwechsel-v1';
-export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, drive: 1 };
+export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, tablet: 1, drive: 1 };
 export const EXPENSE_CATEGORIES = { catering: 'Verpflegung', marketing: 'Marketing', equipment: 'Material', other: 'Sonstiges' };
 export const INCOME_CATEGORIES = { catering: 'Verpflegung', sponsorship: 'Sponsoring', contribution: 'Beiträge', donation: 'Spenden', other: 'Sonstiges' };
 export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', reimbursed: 'Erstattet' };
@@ -154,11 +154,12 @@ export function validateState(state) {
     pairs.add(key);
     if (typeof entry.played !== 'boolean' || typeof entry.drove !== 'boolean') throw new Error('Teilnahme und Fahrt müssen boolesche Werte sein.');
     if (!Number.isFinite(entry.km) || entry.km < 0 || (!entry.drove && entry.km !== 0)) throw new Error('Kilometer dürfen nur beim Fahrer eingetragen sein.');
-    for (const field of ['ref1', 'ref2', 'table', 'lines']) {
-      if (field === 'lines' && entry[field] === undefined) continue;
+    for (const field of ['ref1', 'ref2', 'table', 'lines', 'tablet']) {
+      if ((field === 'lines' || field === 'tablet') && entry[field] === undefined) continue;
       if (!Number.isSafeInteger(entry[field]) || entry[field] < 0) throw new Error('Dienste müssen nichtnegative ganze Zahlen sein.');
     }
     if (entry.extra !== undefined && (!Number.isSafeInteger(entry.extra) || entry.extra < 0)) throw new Error('Extra-Punkte müssen nichtnegative ganze Zahlen sein.');
+    if (entry.extraDescription !== undefined && typeof entry.extraDescription !== 'string') throw new Error('Die Extra-Beschreibung muss ein Text sein.');
   }
   if (state.expenses !== undefined && !Array.isArray(state.expenses)) throw new Error('Ausgaben müssen eine Liste sein.');
   const expenseIds = new Set();
@@ -261,7 +262,7 @@ export function addPlayer(state, name) {
 }
 
 export function addEntry(state, matchId, playerId) {
-  return validateState({ ...state, entries: [...state.entries, { matchId, playerId, played: false, drove: false, km: 0, ref1: 0, ref2: 0, table: 0, lines: 0, extra: 0 }] });
+  return validateState({ ...state, entries: [...state.entries, { matchId, playerId, played: false, drove: false, km: 0, ref1: 0, ref2: 0, table: 0, lines: 0, tablet: 0, extra: 0 }] });
 }
 
 export function updateEntry(state, matchId, playerId, patch) {
@@ -278,7 +279,7 @@ export function matchFactor(state, matchId) {
   const entries = state.entries.filter(entry => entry.matchId === matchId);
   const participations = entries.filter(entry => entry.played).length;
   const points = dutyPoints(state);
-  const teamEffort = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
+  const teamEffort = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
   return participations ? teamEffort / participations : 0;
 }
 
@@ -287,7 +288,7 @@ export function playerMatchBreakdown(state, playerId) {
   return [...state.matches].sort((first, second) => first.date.localeCompare(second.date)).reduce((rows, match) => {
     const entry = state.entries.find(item => item.matchId === match.id && item.playerId === playerId);
     if (!entry) return rows;
-    const beitrag = entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0);
+    const beitrag = entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
     const zielbeitrag = entry.played ? matchFactor(state, match.id) : 0;
     rows.push({ matchId: match.id, date: match.date, opponent: match.opponent, played: entry.played, zielbeitrag, beitrag });
     return rows;
@@ -301,9 +302,9 @@ export function statistics(state) {
     const entries = state.entries.filter(entry => entry.playerId === player.id);
     const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);
     const km = sum('km');
-    const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
+    const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
     const scoreSoll = entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) : 0), 0);
-    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), extra: sum('extra'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
+    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), tablet: sum('tablet'), extra: sum('extra'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
   });
 }
 

@@ -195,6 +195,30 @@ input::placeholder { color: #7891b5; }
 .beer-entry-actions { display: flex; justify-content: flex-end; gap: 2px; }
 .beer-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 46px 16px; border-block: 1px solid var(--line); color: #91a9cc; }
 .beer-empty p { color: #6f89b0; font-size: 13px; }
+.vlw-page { max-width: 1080px; }
+.vlw-connect { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .9fr); align-items: center; gap: 34px; margin-top: 34px; padding-block: 22px; border-block: 1px solid var(--line); }
+.vlw-connect > div { display: flex; flex-direction: column; gap: 6px; }
+.vlw-connect > div > strong { color: #071a3d; font-size: 14px; }
+.vlw-connect > div > span { color: #6f89b0; font-size: 12px; }
+.vlw-connect form { display: flex; align-items: flex-end; gap: 10px; }
+.vlw-connect .field { flex: 1; min-width: 0; margin: 0; }
+.vlw-connect .field input { height: 42px; }
+.vlw-toolbar { display: flex; align-items: center; gap: 12px; margin: 25px 0 16px; }
+.vlw-db-status { display: flex; align-items: center; gap: 8px; color: #6f89b0; font-size: 11px; }
+.vlw-db-status > span { width: 7px; height: 7px; border-radius: 50%; background: #248455; }
+.vlw-toolbar .text-button { margin-left: auto; }
+.vlw-search { display: flex; align-items: center; gap: 10px; padding-bottom: 23px; border-bottom: 1px solid var(--line); }
+.vlw-search .search-box { flex: 1; min-width: 0; }
+.vlw-search .search-box input { height: 42px; }
+.vlw-results { display: flex; flex-direction: column; }
+.vlw-result { padding: 20px 4px; border-bottom: 1px solid var(--line); }
+.vlw-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.vlw-result-heading h2 { margin-top: 5px; color: #071a3d; font-size: 17px; }
+.vlw-team-link { min-height: 36px; flex-shrink: 0; }
+.vlw-player-list { display: flex; flex-wrap: wrap; gap: 7px 18px; margin-top: 14px; color: #46658f; font-size: 12px; }
+.vlw-empty { padding: 35px 10px; color: #6f89b0; font-size: 13px; text-align: center; }
+.vlw-message { margin-top: 17px; color: #248455; font-size: 12px; }
+.vlw-error { margin-top: 18px; }
 .team-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .team-heading h1 { font-size: 32px; color: #071a3d; margin: 7px 0 9px; }
 .team-heading p { color: #6f89b0; font-size: 12px; }
@@ -352,7 +376,7 @@ input::placeholder { color: #7891b5; }
 }
 @media (max-width: 760px) {
   .main-nav { gap: 0; justify-content: space-between; }
-  .main-nav button { gap: 6px; font-size: 11px; }
+  .main-nav button { gap: 5px; padding-inline: 5px; font-size: 10px; }
 }
 @media (max-width: 600px) {
   .treasury-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -477,6 +501,19 @@ input::placeholder { color: #7891b5; }
   .tiny-label { font-size: 8px; }
   .text-button { font-size: 10px; }
   .team-page { padding: 25px 20px 45px; }
+  .vlw-page { padding-top: 25px; }
+  .vlw-connect { grid-template-columns: 1fr; gap: 18px; margin-top: 24px; }
+  .vlw-connect form { align-items: stretch; flex-direction: column; }
+  .vlw-connect form .button { width: 100%; }
+  .vlw-toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .vlw-db-status { flex-wrap: wrap; line-height: 1.5; }
+  .vlw-search { align-items: stretch; flex-direction: column; }
+  .vlw-search .button { width: 100%; }
+  .vlw-result { padding-block: 17px; }
+  .vlw-result-heading { align-items: flex-start; flex-direction: column; }
+  .vlw-result-heading h2 { overflow-wrap: anywhere; }
+  .vlw-team-link { width: 100%; }
+  .vlw-player-list { gap: 8px 14px; }
   .teamlife-page { padding-bottom: 35px; }
   .teamlife-page .team-heading { align-items: flex-start; }
   .teamlife-page .team-heading .button { min-height: 40px; font-size: 11px; }

@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "vlw:local": "node scripts/vlw-local-server.js",
+    "vlw:publish": "node scripts/publish-vlw-snapshot.js",
+    "prebuild": "node scripts/export-vlw-directory.js",
     "build": "vite build",
     "test": "node --test src/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "cheerio": "^1.2.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

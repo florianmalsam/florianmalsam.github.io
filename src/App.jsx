@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Beer, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, Search, Settings, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Beer, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, ExternalLink, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import { STORAGE_KEY, dutyPoints, exampleData, validateState, addPlayer, removePlayer, addEntry, updateEntry, matchFactor, playerMatchBreakdown, statistics, nextMatchId, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
 import Expenses, { ExpenseForm, TreasurySummary, TreasuryForm } from './Expenses.jsx';
 import FinanceJournal from './FinanceJournal.jsx';
@@ -190,6 +190,142 @@ function BeerEntryForm({ data, entry, onSave, onClose }) {
   </Modal>;
 }
 
+async function requestVlw(path, token, options = {}) {
+  const response = await fetch(`http://127.0.0.1:4179/api/vlw${path}`, {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${token}` },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Lokaler VLW-Dienst antwortet mit HTTP ${response.status}.`);
+  return result;
+}
+
+function VlwBrowser({ readOnly }) {
+  const [token, setToken] = useState(() => sessionStorage.getItem('tsb-vlw-local-token') || '');
+  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [publicDirectory, setPublicDirectory] = useState(null);
+  const [publicLoading, setPublicLoading] = useState(true);
+  const [publicError, setPublicError] = useState('');
+  const [showLocalConnection, setShowLocalConnection] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${import.meta.env.BASE_URL}vlw-directory.json`, { cache: 'no-cache' })
+      .then(response => {
+        if (!response.ok) throw new Error(`Der öffentliche VLW-Snapshot antwortet mit HTTP ${response.status}.`);
+        return response.json();
+      })
+      .then(directory => {
+        if (!Array.isArray(directory.teams) || !Array.isArray(directory.leagues)) throw new Error('Der öffentliche VLW-Snapshot ist ungültig.');
+        if (!active) return;
+        setPublicDirectory(directory);
+        setStatus({ teams: directory.teams.length, players: directory.players, importedAt: directory.importedAt });
+      })
+      .catch(caught => { if (active) setPublicError(caught.message || 'Der öffentliche VLW-Snapshot konnte nicht geladen werden.'); })
+      .finally(() => { if (active) setPublicLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  function handleExpiredCode(caught) {
+    if (caught.status !== 401) return false;
+    sessionStorage.removeItem('tsb-vlw-local-token');
+    setToken('');
+    setConnected(false);
+    setStatus(publicDirectory ? { teams: publicDirectory.teams.length, players: publicDirectory.players, importedAt: publicDirectory.importedAt } : null);
+    setResults([]);
+    setShowLocalConnection(true);
+    setError('Der Zugriffscode ist abgelaufen. Bitte den aktuellen Code aus dem Terminal eingeben, in dem npm run vlw:local läuft.');
+    return true;
+  }
+
+  async function connect(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const current = await requestVlw('/status', token.trim());
+      sessionStorage.setItem('tsb-vlw-local-token', token.trim());
+      setToken(token.trim());
+      setStatus(current);
+      setConnected(true);
+      setShowLocalConnection(false);
+      setMessage('');
+    } catch (caught) {
+      if (caught.status === 401) {
+        sessionStorage.removeItem('tsb-vlw-local-token');
+        setToken('');
+        setError('Der Zugriffscode ist ungültig oder veraltet. Bitte den aktuellen Code aus dem Terminal eingeben.');
+      } else setError(caught instanceof TypeError ? 'Der lokale Dienst ist nicht erreichbar. Starte zuerst npm run vlw:local.' : caught.message);
+      setConnected(false);
+      setShowLocalConnection(true);
+    } finally { setBusy(false); }
+  }
+
+  async function searchTeams(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      if (connected) {
+        const result = await requestVlw(`/search?q=${encodeURIComponent(query)}`, token);
+        setResults(result.teams);
+      } else {
+        const search = query.trim().toLocaleLowerCase('de-DE');
+        setResults(publicDirectory.teams.filter(team => team.name.toLocaleLowerCase('de-DE').includes(search) || team.players.some(player => player.toLocaleLowerCase('de-DE').includes(search))).slice(0, 100));
+      }
+    } catch (caught) {
+      if (!handleExpiredCode(caught)) setError(caught instanceof TypeError ? 'Die Verbindung zum lokalen Dienst wurde unterbrochen.' : caught.message);
+    }
+    finally { setBusy(false); }
+  }
+
+  async function importTeams() {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const imported = await requestVlw('/import', token, { method: 'POST' });
+      setStatus(imported);
+      setResults([]);
+      setQuery('');
+      setMessage(`${imported.teams} Mannschaften und ${imported.players} sichtbare Spieler lokal gespeichert. Zum Online-Veröffentlichen npm run vlw:publish ausführen und die Änderungen veröffentlichen.`);
+    } catch (caught) {
+      if (!handleExpiredCode(caught)) setError(caught instanceof TypeError ? 'Der VLW-Abruf oder die Verbindung zum lokalen Dienst ist fehlgeschlagen.' : caught.message);
+    }
+    finally { setBusy(false); }
+  }
+
+  function disconnect() {
+    sessionStorage.removeItem('tsb-vlw-local-token');
+    setToken('');
+    setConnected(false);
+    setStatus(publicDirectory ? { teams: publicDirectory.teams.length, players: publicDirectory.players, importedAt: publicDirectory.importedAt } : null);
+    setResults([]);
+    setMessage('');
+    setError('');
+    setShowLocalConnection(false);
+  }
+
+  return <main className="team-page vlw-page">
+    <div className="breadcrumb"><span>{readOnly ? 'Öffentlicher Snapshot' : 'Mannschaft'}</span><ChevronRight size={13} /><span>VLW-Mannschaften</span></div>
+    <div className="team-heading"><div><span className="eyebrow">{readOnly ? 'ÖFFENTLICHE SPIELERDATEN' : 'VLW-MANNSCHAFTSVERZEICHNIS'}</span><h1>VLW-Mannschaften</h1><p>Oberliga bis Bezirksklasse</p></div>{!readOnly && (connected ? <button className="button secondary" disabled={busy} onClick={importTeams}><RefreshCw size={16} className={busy ? 'spinning' : ''} />{busy ? 'Import läuft …' : 'VLW-Daten aktualisieren'}</button> : <button className="button secondary" onClick={() => setShowLocalConnection(current => !current)}>{showLocalConnection ? 'Verbindung schließen' : 'Lokalen Import verbinden'}</button>)}</div>
+    {showLocalConnection && !readOnly && !connected && <section className="vlw-connect"><div><strong>Lokaler Import</strong><span>Zum Aktualisieren der veröffentlichten Daten den Importdienst auf diesem Gerät verbinden.</span></div><form onSubmit={connect}><label className="field">Einmaliger Zugriffscode<input type="password" autoComplete="off" required value={token} onChange={event => setToken(event.target.value)} /></label><button className="button primary" disabled={busy || !token.trim()}><Check size={16} />{busy ? 'Verbinde …' : 'Verbinden'}</button></form></section>}
+    <div className="vlw-toolbar"><span className="vlw-db-status"><span />{publicLoading ? 'Öffentlicher Stand wird geladen …' : publicError ? 'Öffentlicher Stand nicht verfügbar' : `${status?.teams || 0} Mannschaften · ${status?.players || 0} Spieler${status?.importedAt ? ` · Stand ${new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(status.importedAt))}` : ''}`}</span>{connected && !readOnly && <button type="button" className="text-button" onClick={disconnect}>Trennen</button>}</div>
+      <form className="vlw-search" onSubmit={searchTeams}><div className="search-box"><Search size={18} /><input autoFocus placeholder="Mannschaft oder Spieler suchen …" aria-label="VLW-Mannschaften oder Spieler suchen" value={query} onChange={event => setQuery(event.target.value)} /></div><button className="button primary" disabled={busy || !query.trim() || (!connected && !publicDirectory)}><Search size={16} />Suchen</button></form>
+      {publicError && <p className="form-error vlw-error" role="alert">{publicError}</p>}
+      {message && <p className="vlw-message" role="status">{message}</p>}
+      {results.length ? <div className="vlw-results" aria-live="polite">{results.map(team => <article className="vlw-result" key={team.id}><div className="vlw-result-heading"><div><span className="eyebrow">{team.league}</span><h2>{team.name}</h2></div><a className="button secondary vlw-team-link" href={team.url} target="_blank" rel="noreferrer">Mannschaft öffnen<ExternalLink size={15} /></a></div><div className="vlw-player-list" aria-label={`Spieler von ${team.name}`}>{team.players.map(player => <span key={player}>{player}</span>)}</div></article>)}</div> : query && !busy ? <p className="vlw-empty">Keine Mannschaft oder Spieler gefunden.</p> : !query && <p className="vlw-empty">Suchergebnisse werden hier angezeigt.</p>}
+    {error && <p className="form-error vlw-error" role="alert">{error}</p>}
+  </main>;
+}
+
 function MatchForm({ data, match, onSave, onClose }) {
   const [values, setValues] = useState(match || { id: nextMatchId(data), date: new Date().toLocaleDateString('en-CA'), location: '', opponent: '', standardKm: 0 });
   const [error, setError] = useState('');
@@ -340,7 +476,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   return <div className="app">
     <header className="topbar">
       <a className="brand" href="#" onClick={event => { event.preventDefault(); setView('matches'); }}><span className="brand-mark"><img src="/tsbLogoNeu-black.png" alt="TSB Ravensburg" /></span><span>H2 Stats</span></a>
-      <nav className="main-nav" aria-label="Hauptnavigation"><button className={view === 'matches' ? 'active' : ''} onClick={() => { setView('matches'); setQuery(''); }}><CalendarDays size={18} />Spieltage</button><button className={view === 'team' ? 'active' : ''} onClick={() => { setView('team'); setQuery(''); }}><Users size={18} />Mannschaft</button><button className={view === 'expenses' ? 'active' : ''} onClick={() => setView('expenses')}><Euro size={18} />Finanzen</button></nav>
+      <nav className="main-nav" aria-label="Hauptnavigation"><button className={view === 'matches' ? 'active' : ''} onClick={() => { setView('matches'); setQuery(''); }}><CalendarDays size={18} />Spieltage</button><button className={view === 'team' ? 'active' : ''} onClick={() => { setView('team'); setQuery(''); }}><Users size={18} />Mannschaft</button><button className={view === 'expenses' ? 'active' : ''} onClick={() => setView('expenses')}><Euro size={18} />Finanzen</button><button className={view === 'vlw' ? 'active' : ''} aria-current={view === 'vlw' ? 'page' : undefined} onClick={() => setView('vlw')}><Search size={17} />VLW</button></nav>
       <div className="header-tools"><span className={`save-status ${saveError || cloudStatus === 'error' ? 'save-failed' : ''}`} role="status"><span />{readOnly ? 'Nur Lesen' : saveError || cloudStatus === 'error' ? 'Nicht gespeichert' : cloudStatus === 'saving' ? 'Wird gespeichert …' : cloudStatus === 'saved' ? 'Gemeinsam gespeichert' : 'Lokal gespeichert'}</span><IconButton label="Teamleben" className={`teamlife-trigger ${view === 'teamlife' ? 'is-active' : ''}`} aria-current={view === 'teamlife' ? 'page' : undefined} onClick={() => setView('teamlife')}><Beer size={18} /></IconButton><div className="backup-tools"><IconButton label="Backup importieren" disabled={readOnly} onClick={() => fileInput.current.click()}><ArrowUpFromLine size={18} /></IconButton><IconButton label="Backup exportieren" onClick={exportData}><ArrowDownToLine size={18} /></IconButton>{onSignOut && <IconButton label="Abmelden" disabled={cloudStatus === 'saving'} onClick={onSignOut}><LogOut size={18} /></IconButton>}<IconButton label="Konfiguration" onClick={() => setDialog({ type: 'settings' })}><Settings size={18} /></IconButton></div><input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>
     </header>
 
@@ -398,7 +534,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
           return <article className="beer-entry" key={entry.id}><div className="beer-entry-date"><strong>{new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short' }).format(new Date(`${entry.date}T12:00:00`)).replace('.', '')}</strong><span>{new Date(`${entry.date}T12:00:00`).getFullYear()}</span></div><div className="beer-entry-details"><strong>{player?.name || 'Unbekannter Spieler'}</strong>{entry.note && <span>{entry.note}</span>}</div><span className="beer-entry-quantity">{entry.crates} {entry.crates === 1 ? 'Kiste' : 'Kisten'}</span><div className="beer-entry-actions"><IconButton label={`Biereintrag von ${player?.name || 'Spieler'} bearbeiten`} disabled={readOnly} onClick={() => setDialog({ type: 'beerEntry', entry })}><Pencil size={15} /></IconButton><IconButton label={`Biereintrag von ${player?.name || 'Spieler'} löschen`} className="danger-hover" disabled={readOnly} onClick={() => setDialog({ type: 'deleteBeerEntry', entry, playerName: player?.name || 'Spieler' })}><Trash2 size={15} /></IconButton></div></article>;
         })}</div> : <div className="beer-empty"><Beer size={26} /><p>Noch keine Kiste eingetragen.</p>{!readOnly && data.players.length > 0 && <button className="text-button" onClick={() => setDialog({ type: 'beerEntry' })}><Plus size={15} />Ersten Eintrag hinzufügen</button>}</div>}
       </section>
-    </main> : view === 'expenses' ? <main className="team-page expenses-page">
+    </main> : view === 'vlw' ? <VlwBrowser readOnly={readOnly} /> : view === 'expenses' ? <main className="team-page expenses-page">
       <div className="breadcrumb">Dein Team <ChevronRight size={13} /><span>Finanzen</span></div>
       <div className="team-heading"><div><span className="eyebrow">MANNSCHAFTSFINANZEN</span><h1>Mannschaftskasse</h1></div><button className="button secondary danger-hover" title={!onResetFinances ? 'Nur mit Admin-Anmeldung verfügbar' : 'Verlauf löschen und Kasse auf 0 setzen'} disabled={readOnly || !onResetFinances || cloudStatus === 'saving' || cloudStatus === 'error'} onClick={() => setDialog({ type: 'resetFinances' })}><Trash2 size={17} />Kasse zurücksetzen</button></div>
       <TreasurySummary data={data} readOnly={readOnly} onEdit={() => setDialog({ type: 'treasury' })} />

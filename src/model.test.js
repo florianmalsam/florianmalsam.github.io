@@ -14,6 +14,17 @@ test('Kassenjournal startet mit dem aktuellen Bestand ohne erfundene Vorgeschich
   assert.equal(exampleData().financeJournal, undefined);
 });
 
+test('Biereinträge bleiben getrennt vom Finanzjournal und alte Backups bleiben gültig', () => {
+  const original = initializeFinanceJournal(exampleData());
+  assert.equal(validateState({ ...original, beerEntries: undefined }).beerEntries, undefined);
+  const next = recordFinanceChanges(original, { ...original, beerEntries: [{ id: 'B1', playerId: 'P1', date: '2026-10-11', crates: 1, note: '' }] });
+  assert.deepEqual(next.beerEntries, [{ id: 'B1', playerId: 'P1', date: '2026-10-11', crates: 1, note: '' }]);
+  assert.deepEqual(next.financeJournal, original.financeJournal);
+  assert.throws(() => validateState({ ...next, beerEntries: [{ ...next.beerEntries[0], playerId: 'missing' }] }), /unbekannten Spieler/);
+  assert.throws(() => validateState({ ...next, beerEntries: [{ ...next.beerEntries[0], crates: 0 }] }), /mindestens 1/);
+  assert.throws(() => validateState({ ...next, beerEntries: [{ ...next.beerEntries[0], date: '2026-02-30' }] }), /gültiges Bierdatum/);
+});
+
 test('Journal behält offene Auslagen, Erstattungen, Änderungen und Löschungen mit Kassenständen', () => {
   let state = initializeFinanceJournal(exampleData());
   state = recordFinanceChanges(state, { ...state, expenses: [sampleExpense] });

@@ -93,6 +93,7 @@ export function exampleData() {
     rate: 0.3,
     expenses: [],
     incomes: [],
+    beerEntries: [],
     treasuryOpeningBalanceCents: 0,
     treasuryBalanceCents: 0,
     dutyPoints: { ...DEFAULT_DUTY_POINTS },
@@ -137,6 +138,16 @@ export function validateState(state) {
     if (typeof player.name !== 'string' || !normalizedName(player.name) || names.has(normalizedName(player.name))) throw new Error('Spielernamen müssen ausgefüllt und eindeutig sein. Bei gleichen Vornamen bitte Nachnamen ergänzen.');
     playerIds.add(player.id);
     names.add(normalizedName(player.name));
+  }
+  if (state.beerEntries !== undefined && !Array.isArray(state.beerEntries)) throw new Error('Biereinträge müssen eine Liste sein.');
+  const beerEntryIds = new Set();
+  for (const entry of state.beerEntries || []) {
+    if (!entry || typeof entry.id !== 'string' || !entry.id || beerEntryIds.has(entry.id)) throw new Error('Biereinträge müssen eindeutige IDs haben.');
+    beerEntryIds.add(entry.id);
+    if (!playerIds.has(entry.playerId)) throw new Error('Ein Biereintrag verweist auf einen unbekannten Spieler.');
+    if (typeof entry.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !Number.isFinite(Date.parse(entry.date)) || new Date(`${entry.date}T12:00:00Z`).toISOString().slice(0, 10) !== entry.date) throw new Error('Bitte ein gültiges Bierdatum wählen.');
+    if (!Number.isSafeInteger(entry.crates) || entry.crates < 1) throw new Error('Die Anzahl der Kisten muss mindestens 1 sein.');
+    if (typeof entry.note !== 'string') throw new Error('Der Bier-Kommentar muss Text sein.');
   }
   const matchIds = new Set();
   for (const match of state.matches) {

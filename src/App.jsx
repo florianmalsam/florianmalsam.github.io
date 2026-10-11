@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, Search, Settings, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Beer, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, Search, Settings, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import { STORAGE_KEY, dutyPoints, exampleData, validateState, addPlayer, removePlayer, addEntry, updateEntry, matchFactor, playerMatchBreakdown, statistics, nextMatchId, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
 import Expenses, { ExpenseForm, TreasurySummary, TreasuryForm } from './Expenses.jsx';
 import FinanceJournal from './FinanceJournal.jsx';
@@ -168,6 +168,28 @@ function PlayerForm({ data, player, onSave, onClose, fromRoster }) {
   </Modal>;
 }
 
+function BeerEntryForm({ data, entry, onSave, onClose }) {
+  const [values, setValues] = useState(entry || { playerId: data.players[0]?.id || '', date: new Date().toLocaleDateString('en-CA'), crates: 1, note: '' });
+  const [error, setError] = useState('');
+  const field = (key, value) => setValues(current => ({ ...current, [key]: value }));
+  return <Modal title={entry ? 'Biereintrag bearbeiten' : 'Kiste eintragen'} onClose={onClose}>
+    <form onSubmit={event => {
+      event.preventDefault();
+      try {
+        const item = { id: entry?.id || crypto.randomUUID(), playerId: values.playerId, date: values.date, crates: Number(values.crates), note: values.note.trim() };
+        const beerEntries = entry ? (data.beerEntries || []).map(current => current.id === entry.id ? item : current) : [...(data.beerEntries || []), item];
+        onSave(validateState({ ...data, beerEntries }));
+      } catch (caught) { setError(caught.message); }
+    }}>
+      <label className="field">Spieler<select autoFocus required value={values.playerId} onChange={event => field('playerId', event.target.value)}>{data.players.map(player => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
+      <div className="form-grid"><label className="field">Datum<input type="date" required value={values.date} onChange={event => field('date', event.target.value)} /></label><label className="field">Kisten<input type="number" required min="1" step="1" value={values.crates} onChange={event => field('crates', event.target.value)} /></label></div>
+      <label className="field">Anlass oder Kommentar <span className="optional-label">Optional</span><input maxLength={160} placeholder="Training, Auswärtsspiel …" value={values.note} onChange={event => field('note', event.target.value)} /></label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Abbrechen</button><button className="button primary" disabled={!data.players.length}><Check size={17} />{entry ? 'Speichern' : 'Eintragen'}</button></div>
+    </form>
+  </Modal>;
+}
+
 function MatchForm({ data, match, onSave, onClose }) {
   const [values, setValues] = useState(match || { id: nextMatchId(data), date: new Date().toLocaleDateString('en-CA'), location: '', opponent: '', standardKm: 0 });
   const [error, setError] = useState('');
@@ -310,12 +332,16 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   const playersAtOrAboveTarget = eligiblePlayers.length - playersBelowTarget;
   const outstandingScore = totals.reduce((total, player) => total + Math.max(0, player.scoreSoll - player.scoreIst), 0);
   const targetReachedPercent = eligiblePlayers.length ? playersAtOrAboveTarget / eligiblePlayers.length * 100 : 0;
+  const beerEntries = data.beerEntries || [];
+  const currentYear = new Date().getFullYear();
+  const cratesThisYear = beerEntries.filter(entry => entry.date.startsWith(String(currentYear))).reduce((total, entry) => total + entry.crates, 0);
+  const sortedBeerEntries = [...beerEntries].sort((first, second) => second.date.localeCompare(first.date));
 
   return <div className="app">
     <header className="topbar">
-      <a className="brand" href="#" onClick={event => { event.preventDefault(); setView('matches'); }}><span className="brand-mark"><img src="/tsbLogoNeu-black.png" alt="TSB Ravensburg" /></span><span>TSB Herren 2 Stats</span></a>
+      <a className="brand" href="#" onClick={event => { event.preventDefault(); setView('matches'); }}><span className="brand-mark"><img src="/tsbLogoNeu-black.png" alt="TSB Ravensburg" /></span><span>H2 Stats</span></a>
       <nav className="main-nav" aria-label="Hauptnavigation"><button className={view === 'matches' ? 'active' : ''} onClick={() => { setView('matches'); setQuery(''); }}><CalendarDays size={18} />Spieltage</button><button className={view === 'team' ? 'active' : ''} onClick={() => { setView('team'); setQuery(''); }}><Users size={18} />Mannschaft</button><button className={view === 'expenses' ? 'active' : ''} onClick={() => setView('expenses')}><Euro size={18} />Finanzen</button></nav>
-      <div className="header-tools"><span className={`save-status ${saveError || cloudStatus === 'error' ? 'save-failed' : ''}`} role="status"><span />{readOnly ? 'Nur Lesen' : saveError || cloudStatus === 'error' ? 'Nicht gespeichert' : cloudStatus === 'saving' ? 'Wird gespeichert …' : cloudStatus === 'saved' ? 'Gemeinsam gespeichert' : 'Lokal gespeichert'}</span><div className="backup-tools"><IconButton label="Backup importieren" disabled={readOnly} onClick={() => fileInput.current.click()}><ArrowUpFromLine size={18} /></IconButton><IconButton label="Backup exportieren" onClick={exportData}><ArrowDownToLine size={18} /></IconButton>{onSignOut && <IconButton label="Abmelden" disabled={cloudStatus === 'saving'} onClick={onSignOut}><LogOut size={18} /></IconButton>}<IconButton label="Konfiguration" onClick={() => setDialog({ type: 'settings' })}><Settings size={18} /></IconButton></div><input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>
+      <div className="header-tools"><span className={`save-status ${saveError || cloudStatus === 'error' ? 'save-failed' : ''}`} role="status"><span />{readOnly ? 'Nur Lesen' : saveError || cloudStatus === 'error' ? 'Nicht gespeichert' : cloudStatus === 'saving' ? 'Wird gespeichert …' : cloudStatus === 'saved' ? 'Gemeinsam gespeichert' : 'Lokal gespeichert'}</span><IconButton label="Teamleben" className={`teamlife-trigger ${view === 'teamlife' ? 'is-active' : ''}`} aria-current={view === 'teamlife' ? 'page' : undefined} onClick={() => setView('teamlife')}><Beer size={18} /></IconButton><div className="backup-tools"><IconButton label="Backup importieren" disabled={readOnly} onClick={() => fileInput.current.click()}><ArrowUpFromLine size={18} /></IconButton><IconButton label="Backup exportieren" onClick={exportData}><ArrowDownToLine size={18} /></IconButton>{onSignOut && <IconButton label="Abmelden" disabled={cloudStatus === 'saving'} onClick={onSignOut}><LogOut size={18} /></IconButton>}<IconButton label="Konfiguration" onClick={() => setDialog({ type: 'settings' })}><Settings size={18} /></IconButton></div><input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>
     </header>
 
     {view === 'matches' ? <div className="workspace">
@@ -362,7 +388,17 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
           <div className="match-bottom"><span className="tiny-label">MANNSCHAFTSBILANZ</span><button className="text-button" onClick={() => { setView('team'); setQuery(''); }}>Zur Gesamtübersicht <ChevronRight size={16} /></button></div>
         </> : <div className="empty-state page-empty"><CalendarDays size={40} /><h2>Dein erster Spieltag</h2><button className="button primary" disabled={readOnly} onClick={() => setDialog({ type: 'match' })}><Plus size={17} />Spieltag anlegen</button></div>}
       </main>
-    </div> : view === 'expenses' ? <main className="team-page expenses-page">
+    </div> : view === 'teamlife' ? <main className="team-page teamlife-page">
+      <div className="breadcrumb"><button type="button" className="text-button" onClick={() => setView('matches')}>Spieltage</button><ChevronRight size={13} /><span>Teamleben</span></div>
+      <div className="team-heading"><div><span className="eyebrow">ABSEITS DER MANNSCHAFTSKASSE</span><h1>Teamleben</h1><p>Getränke fürs Team</p></div><button className="button primary" disabled={readOnly || !data.players.length} onClick={() => setDialog({ type: 'beerEntry' })}><Plus size={17} />Kiste eintragen</button></div>
+      <section className="beer-summary" aria-label="Bierkisten dieses Jahr"><Beer size={19} /><div><strong>{cratesThisYear}</strong><span>{cratesThisYear === 1 ? 'Kiste dieses Jahr' : 'Kisten dieses Jahr'}</span></div><small>{currentYear}</small></section>
+      <section className="beer-history" aria-label="Bierliste"><h2>Zuletzt gebracht <span>{beerEntries.length}</span></h2>
+        {sortedBeerEntries.length ? <div className="beer-list">{sortedBeerEntries.map(entry => {
+          const player = data.players.find(item => item.id === entry.playerId);
+          return <article className="beer-entry" key={entry.id}><div className="beer-entry-date"><strong>{new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: 'short' }).format(new Date(`${entry.date}T12:00:00`)).replace('.', '')}</strong><span>{new Date(`${entry.date}T12:00:00`).getFullYear()}</span></div><div className="beer-entry-details"><strong>{player?.name || 'Unbekannter Spieler'}</strong>{entry.note && <span>{entry.note}</span>}</div><span className="beer-entry-quantity">{entry.crates} {entry.crates === 1 ? 'Kiste' : 'Kisten'}</span><div className="beer-entry-actions"><IconButton label={`Biereintrag von ${player?.name || 'Spieler'} bearbeiten`} disabled={readOnly} onClick={() => setDialog({ type: 'beerEntry', entry })}><Pencil size={15} /></IconButton><IconButton label={`Biereintrag von ${player?.name || 'Spieler'} löschen`} className="danger-hover" disabled={readOnly} onClick={() => setDialog({ type: 'deleteBeerEntry', entry, playerName: player?.name || 'Spieler' })}><Trash2 size={15} /></IconButton></div></article>;
+        })}</div> : <div className="beer-empty"><Beer size={26} /><p>Noch keine Kiste eingetragen.</p>{!readOnly && data.players.length > 0 && <button className="text-button" onClick={() => setDialog({ type: 'beerEntry' })}><Plus size={15} />Ersten Eintrag hinzufügen</button>}</div>}
+      </section>
+    </main> : view === 'expenses' ? <main className="team-page expenses-page">
       <div className="breadcrumb">Dein Team <ChevronRight size={13} /><span>Finanzen</span></div>
       <div className="team-heading"><div><span className="eyebrow">MANNSCHAFTSFINANZEN</span><h1>Mannschaftskasse</h1></div><button className="button secondary danger-hover" title={!onResetFinances ? 'Nur mit Admin-Anmeldung verfügbar' : 'Verlauf löschen und Kasse auf 0 setzen'} disabled={readOnly || !onResetFinances || cloudStatus === 'saving' || cloudStatus === 'error'} onClick={() => setDialog({ type: 'resetFinances' })}><Trash2 size={17} />Kasse zurücksetzen</button></div>
       <TreasurySummary data={data} readOnly={readOnly} onEdit={() => setDialog({ type: 'treasury' })} />
@@ -396,6 +432,8 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       <section className="settings-section"><h3>Punkte je Aufgabe</h3>{[...dutyOptions, ['drive', 'Fahren']].map(([field, label]) => <label className="settings-row" key={field}><span>{label}</span><NumericInput value={dutyPoints(data)[field]} disabled={readOnly} label={`${label}: Punkte`} onChange={value => commit({ ...data, dutyPoints: { ...dutyPoints(data), [field]: value } })} /></label>)}</section>
       <div className="modal-actions"><button type="button" className="button primary" onClick={closeDialog}><Check size={17} />Fertig</button></div>
     </Modal>}
+    {dialog?.type === 'beerEntry' && <BeerEntryForm key={dialog.entry?.id || 'new-beer-entry'} data={data} entry={dialog.entry} onClose={closeDialog} onSave={next => { if (commit(next, dialog.entry ? 'Biereintrag aktualisiert.' : 'Kiste eingetragen.')) closeDialog(); }} />}
+    {dialog?.type === 'deleteBeerEntry' && <Modal title="Biereintrag löschen?" onClose={closeDialog}><p className="confirm-copy">Der Eintrag von {dialog.playerName} wird endgültig gelöscht.</p><div className="modal-actions"><button type="button" className="button secondary" onClick={closeDialog}>Abbrechen</button><button type="button" className="button danger" disabled={readOnly} onClick={() => { if (commit({ ...data, beerEntries: beerEntries.filter(entry => entry.id !== dialog.entry.id) }, 'Biereintrag gelöscht.')) closeDialog(); }}><Trash2 size={16} />Endgültig löschen</button></div></Modal>}
     {dialog?.type === 'player' && <PlayerForm key={dialog.player?.id || 'new'} data={data} player={dialog.player} fromRoster={dialog.fromRoster} onClose={closeDialog} onSave={(next, playerId) => {
       const final = playerId ? addEntry(next, selectedId, playerId) : next;
       if (commit(final, dialog.player ? 'Spieler aktualisiert.' : 'Spieler angelegt.')) closeDialog();
@@ -420,6 +458,11 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       if (dialog.type === 'deletePlayer' && data.expenses?.some(expense => expense.paidByPlayerId === dialog.player.id)) {
         closeDialog();
         setNotice({ text: 'Dieser Spieler ist mit Ausgaben verknüpft. Bitte zuerst die Ausgaben einem anderen Spieler oder der Mannschaftskasse zuordnen.', error: true });
+        return;
+      }
+      if (dialog.type === 'deletePlayer' && beerEntries.some(entry => entry.playerId === dialog.player.id)) {
+        closeDialog();
+        setNotice({ text: 'Dieser Spieler ist mit Biereinträgen verknüpft. Bitte zuerst die Einträge im Teamleben bearbeiten oder löschen.', error: true });
         return;
       }
       const next = dialog.type === 'deletePlayer' ? removePlayer(data, dialog.player.id) : dialog.type === 'deleteMatch' ? { ...data, matches: data.matches.filter(item => item.id !== dialog.match.id), entries: data.entries.filter(entry => entry.matchId !== dialog.match.id) } : { ...data, entries: data.entries.filter(entry => !(entry.playerId === dialog.player.id && entry.matchId === selectedId)) };

@@ -1,5 +1,6 @@
 export const STORAGE_KEY = 'seitenwechsel-v1';
 export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, tablet: 1, drive: 1 };
+export const DEFAULT_LINE_POINTS_CAP = 2;
 export const EXPENSE_CATEGORIES = { catering: 'Verpflegung', marketing: 'Marketing', equipment: 'Material', other: 'Sonstiges' };
 export const INCOME_CATEGORIES = { catering: 'Verpflegung', sponsorship: 'Sponsoring', contribution: 'Beiträge', donation: 'Spenden', other: 'Sonstiges' };
 export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', reimbursed: 'Erstattet' };
@@ -131,6 +132,7 @@ export function validateState(state) {
   }
   if (!Number.isFinite(state.rate) || state.rate < 0) throw new Error('Der Kilometersatz muss mindestens 0 sein.');
   if (state.dutyPoints !== undefined && (!state.dutyPoints || typeof state.dutyPoints !== 'object' || Array.isArray(state.dutyPoints) || Object.values({ ...DEFAULT_DUTY_POINTS, ...state.dutyPoints }).some(value => !Number.isFinite(value) || value < 0))) throw new Error('Dienstpunkte müssen nichtnegative Zahlen sein.');
+  if (state.linePointsCap !== undefined && (!Number.isFinite(state.linePointsCap) || state.linePointsCap < 0)) throw new Error('Der Linien-Deckel muss eine nichtnegative Zahl sein.');
   const playerIds = new Set();
   const names = new Set();
   for (const player of state.players) {
@@ -294,8 +296,15 @@ export function updateEntry(state, matchId, playerId, patch) {
   return validateState({ ...state, entries });
 }
 
-function entryEffort(entry, points) {
-  return entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
+function entryEffort(entry, points, lineScale = 1) {
+  return entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines * lineScale + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
+}
+
+function matchLineScale(state, entries, points) {
+  const playersById = new Map(state.players.map(player => [player.id, player]));
+  const linePoints = entries.reduce((total, entry) => total + (!playersById.get(entry.playerId)?.isExemptFromPoints ? (entry.lines || 0) * points.lines : 0), 0);
+  const cap = state.linePointsCap ?? DEFAULT_LINE_POINTS_CAP;
+  return linePoints > cap ? cap / linePoints : 1;
 }
 
 export function matchFactor(state, matchId) {
@@ -303,7 +312,8 @@ export function matchFactor(state, matchId) {
   const playersById = new Map(state.players.map(player => [player.id, player]));
   const targetWeight = entries.reduce((total, entry) => total + (entry.played && !playersById.get(entry.playerId)?.isExemptFromPoints ? 1 : 0), 0);
   const points = dutyPoints(state);
-  const teamEffort = entries.reduce((total, entry) => total + (!playersById.get(entry.playerId)?.isExemptFromPoints ? entryEffort(entry, points) : 0), 0);
+  const lineScale = matchLineScale(state, entries, points);
+  const teamEffort = entries.reduce((total, entry) => total + (!playersById.get(entry.playerId)?.isExemptFromPoints ? entryEffort(entry, points, lineScale) : 0), 0);
   return targetWeight ? teamEffort / targetWeight : 0;
 }
 
@@ -313,7 +323,8 @@ export function playerMatchBreakdown(state, playerId) {
     const entry = state.entries.find(item => item.matchId === match.id && item.playerId === playerId);
     if (!entry) return rows;
     const player = state.players.find(item => item.id === playerId);
-    const beitrag = player?.isExemptFromPoints ? 0 : entryEffort(entry, points);
+    const matchEntries = state.entries.filter(item => item.matchId === match.id);
+    const beitrag = player?.isExemptFromPoints ? 0 : entryEffort(entry, points, matchLineScale(state, matchEntries, points));
     const zielbeitrag = entry.played && !player?.isExemptFromPoints ? matchFactor(state, match.id) : 0;
     rows.push({ matchId: match.id, date: match.date, opponent: match.opponent, played: entry.played, zielbeitrag, beitrag });
     return rows;
@@ -323,11 +334,12 @@ export function playerMatchBreakdown(state, playerId) {
 export function statistics(state) {
   const points = dutyPoints(state);
   const factorByMatch = new Map(state.matches.map(match => [match.id, matchFactor(state, match.id)]));
+  const lineScaleByMatch = new Map(state.matches.map(match => [match.id, matchLineScale(state, state.entries.filter(entry => entry.matchId === match.id), points)]));
   return state.players.map(player => {
     const entries = state.entries.filter(entry => entry.playerId === player.id);
     const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);
     const km = sum('km');
-    const contributionPoints = entries.reduce((total, entry) => total + entryEffort(entry, points), 0);
+    const contributionPoints = entries.reduce((total, entry) => total + entryEffort(entry, points, lineScaleByMatch.get(entry.matchId) ?? 1), 0);
     const scoreIst = player.isExemptFromPoints ? 0 : contributionPoints;
     const scoreSoll = player.isExemptFromPoints ? 0 : entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) : 0), 0);
     return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), tablet: sum('tablet'), extra: sum('extra'), contributionPoints, scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };

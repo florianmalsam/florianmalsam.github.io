@@ -380,9 +380,26 @@ test('Linien-Dienste fließen in SOLL, IST und Statistik ein und alte Einsätze 
   assert.ok(Math.abs(anna.scoreSoll - 59 / 12) < 1e-10);
   assert.ok(Math.abs(ben.scoreSoll - 59 / 12) < 1e-10);
 
-  const configured = { ...state, dutyPoints: { ref1: 3, ref2: 2, table: 1, lines: 4 } };
+  const configured = { ...state, dutyPoints: { ref1: 3, ref2: 2, table: 1, lines: 4 }, linePointsCap: 4 };
   assert.equal(statistics(configured)[0].scoreIst, 9);
   assert.ok(Math.abs(statistics(configured)[0].scoreSoll - 17 / 3) < 1e-10);
+});
+
+test('Linien-Punkte werden je Spieltag gedeckelt und gleichmäßig auf die Linien-Dienste verteilt', () => {
+  const base = exampleData();
+  const players = base.players.slice(0, 4);
+  const entries = players.map(player => ({ matchId: 'ST01', playerId: player.id, played: true, drove: false, km: 0, ref1: 0, ref2: 0, table: 0, lines: 1, tablet: 0 }));
+  const cappedAtTwo = validateState({ ...base, players, matches: [base.matches[0]], entries, dutyPoints: { ...base.dutyPoints, lines: 2 }, linePointsCap: 2 });
+  const fourPlayerStats = statistics(cappedAtTwo);
+  assert.deepEqual(fourPlayerStats.map(player => player.scoreIst), [0.5, 0.5, 0.5, 0.5]);
+  assert.equal(fourPlayerStats.reduce((total, player) => total + player.scoreSoll, 0), 2);
+  assert.equal(playerMatchBreakdown(cappedAtTwo, 'P1')[0].beitrag, 0.5);
+
+  const twoPlayerState = validateState({ ...cappedAtTwo, players: players.slice(0, 2), entries: entries.slice(0, 2), linePointsCap: 4 });
+  const twoPlayerStats = statistics(twoPlayerState);
+  assert.deepEqual(twoPlayerStats.map(player => player.scoreIst), [2, 2]);
+  assert.equal(twoPlayerStats.reduce((total, player) => total + player.scoreSoll, 0), 4);
+  assert.throws(() => validateState({ ...twoPlayerState, linePointsCap: -1 }), /Linien-Deckel/);
 });
 
 test('Fahren erhöht SOLL pro Fahrer und ist konfigurierbar', () => {

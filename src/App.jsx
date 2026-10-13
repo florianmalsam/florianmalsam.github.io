@@ -78,7 +78,7 @@ function ScoreHelp({ label, text }) {
 }
 
 function Avatar({ name, index = 0, scoreSoll, scoreIst }) {
-  const ratio = scoreSoll > 0 ? scoreIst / scoreSoll : scoreIst > 0 ? 1 : null;
+  const ratio = scoreSoll > 0 ? scoreIst / scoreSoll : null;
   const hue = ratio === null ? null : Math.round(120 * Math.min(ratio, 1));
   const style = hue === null ? undefined : { backgroundColor: `hsl(${hue} 75% 89%)`, color: `hsl(${hue} 60% 30%)` };
   return <span className={`avatar avatar-${index % 4}`} style={style} aria-hidden="true">{initials(name)}</span>;
@@ -152,22 +152,20 @@ function Toggle({ value, onChange, label, driver = false, disabled = false }) {
 
 function PlayerForm({ data, player, onSave, onClose, fromRoster }) {
   const [name, setName] = useState(player?.name || '');
-  const [sollFactor, setSollFactor] = useState(String((player?.sollFactor ?? 1) * 100));
+  const [isExemptFromPoints, setIsExemptFromPoints] = useState(player?.isExemptFromPoints ?? false);
   const [error, setError] = useState('');
   return <Modal title={player ? 'Spieler bearbeiten' : 'Spieler anlegen'} onClose={onClose}>
     <form onSubmit={event => {
       event.preventDefault();
       try {
-        const percent = Number(sollFactor);
-        if (sollFactor.trim() === '' || !Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Der SOLL-Faktor muss zwischen 0 und 100 Prozent liegen.');
         let next = player ? { ...data, players: data.players.map(item => item.id === player.id ? { ...item, name: name.trim().replace(/\s+/g, ' ') } : item) } : addPlayer(data, name);
         const playerId = player?.id || next.players.at(-1).id;
-        next = validateState({ ...next, players: next.players.map(item => item.id === playerId ? { ...item, sollFactor: percent / 100 } : item) });
+        next = validateState({ ...next, players: next.players.map(item => item.id === playerId ? { ...item, isExemptFromPoints } : item) });
         onSave(next, fromRoster ? next.players.at(-1).id : null);
       } catch (caught) { setError(caught.message); }
     }}>
       <label className="field">Name<input autoFocus required maxLength={80} placeholder="Vorname, bei Bedarf Nachname" value={name} onChange={event => setName(event.target.value)} /></label>
-      <label className="field">SOLL-Faktor in Prozent<input type="number" required min="0" max="100" step="1" inputMode="numeric" value={sollFactor} onChange={event => setSollFactor(event.target.value)} /><span className="optional-label">100 % = Standard · 0 % = kein SOLL</span></label>
+      <label className="reset-confirmation"><input type="checkbox" checked={isExemptFromPoints} onChange={event => setIsExemptFromPoints(event.target.checked)} /><span>Außerhalb der Wertung<br /><small>Dienste bleiben erfasst, zählen aber nicht zu IST oder SOLL.</small></span></label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Abbrechen</button><button className="button primary"><Check size={17} />{player ? 'Speichern' : 'Spieler anlegen'}</button></div>
     </form>
@@ -396,7 +394,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   const fileInput = useRef(null);
   const baselineSaved = useRef(false);
   const match = data.matches.find(item => item.id === selectedId);
-  const totals = statistics(data).sort((first, second) => {
+  const totals = statistics(data).map(player => ({ ...player, scoreIstCounted: player.scoreIst, scoreIst: player.contributionPoints })).sort((first, second) => {
     const firstValue = first[statsSort.field];
     const secondValue = second[statsSort.field];
     const comparison = typeof firstValue === 'string' ? firstValue.localeCompare(secondValue, 'de-DE', { numeric: true }) : firstValue - secondValue;
@@ -470,10 +468,10 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
   const sum = field => totals.reduce((total, item) => total + item[field], 0);
   const totalSoll = sum('scoreSoll');
   const totalIst = sum('scoreIst');
-  const eligiblePlayers = totals.filter(player => player.played > 0 || player.scoreIst > 0);
-  const playersBelowTarget = eligiblePlayers.filter(player => player.scoreIst + 1e-9 < player.scoreSoll).length;
+  const eligiblePlayers = totals.filter(player => !player.isExemptFromPoints && (player.played > 0 || player.scoreIstCounted > 0));
+  const playersBelowTarget = eligiblePlayers.filter(player => player.scoreIstCounted + 1e-9 < player.scoreSoll).length;
   const playersAtOrAboveTarget = eligiblePlayers.length - playersBelowTarget;
-  const outstandingScore = totals.reduce((total, player) => total + Math.max(0, player.scoreSoll - player.scoreIst), 0);
+  const outstandingScore = totals.reduce((total, player) => total + Math.max(0, player.scoreSoll - player.scoreIstCounted), 0);
   const targetReachedPercent = eligiblePlayers.length ? playersAtOrAboveTarget / eligiblePlayers.length * 100 : 0;
   const beerEntries = data.beerEntries || [];
   const currentYear = new Date().getFullYear();
@@ -563,7 +561,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
       <div className="stats-scroll"><table className={`stats-table ${showDutyDetails ? 'show-duty-details' : ''}`}><thead><tr>
         {[['name', 'Spieler'], ['played', 'Gespielt'], ['drove', 'Fahrtage'], ['km', 'Kilometer'], ...dutyOptions, ['extra', 'Extra']].map(([field, label]) => <SortHeader key={field} field={field} label={label} sort={statsSort} onSort={setStatsSort} />)}
         <SortHeader field="scoreSoll" label="Zielbeitrag" sort={statsSort} onSort={setStatsSort} className="score-column score-column-soll"><ScoreHelp label="Zielbeitrag erklären" text="Dein anteiliger Teamaufwand. Dienste, Fahren und Extra-Punkte werden nach SOLL-Faktor auf die Teilnehmenden verteilt." /></SortHeader>
-        <SortHeader field="scoreIst" label="Beitrag" sort={statsSort} onSort={setStatsSort} className="score-column score-column-ist"><ScoreHelp label="Beitrag erklären" text="Deine gesammelten Punkte aus übernommenen Diensten, Fahren und Extra-Punkten." /><IconButton className={`contribution-details-toggle ${showDutyDetails ? 'is-open' : ''}`} label={showDutyDetails ? 'Dienst- und Extra-Details ausblenden' : 'Dienst- und Extra-Details einblenden'} aria-expanded={showDutyDetails} onClick={() => setShowDutyDetails(current => !current)}><ChevronDown size={15} /></IconButton></SortHeader>
+        <SortHeader field="contributionPoints" label="Beitrag" sort={statsSort} onSort={setStatsSort} className="score-column score-column-ist"><ScoreHelp label="Beitrag erklären" text="Erfasste Punkte aus Diensten. Bei Spielern außerhalb der Wertung werden sie angezeigt, aber nicht ins gewertete IST oder SOLL übernommen." /><IconButton className={`contribution-details-toggle ${showDutyDetails ? 'is-open' : ''}`} label={showDutyDetails ? 'Dienst- und Extra-Details ausblenden' : 'Dienst- und Extra-Details einblenden'} aria-expanded={showDutyDetails} onClick={() => setShowDutyDetails(current => !current)}><ChevronDown size={15} /></IconButton></SortHeader>
         <SortHeader field="reimbursement" label="Erstattung" sort={statsSort} onSort={setStatsSort} /><th scope="col" aria-label="Aktionen" />
       </tr></thead><tbody>{totals.filter(player => player.name.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE'))).flatMap(player => { const expanded = expandedPlayers.includes(player.id); const breakdown = expanded ? playerMatchBreakdown(data, player.id) : []; return [<tr key={player.id}><td><div className="player-cell"><button type="button" className={`player-expand ${expanded ? 'is-open' : ''}`} aria-expanded={expanded} aria-label={`Spieltage von ${player.name} ${expanded ? 'ausblenden' : 'anzeigen'}`} onClick={() => setExpandedPlayers(current => current.includes(player.id) ? current.filter(id => id !== player.id) : [...current, player.id])}><Avatar name={player.name} index={data.players.findIndex(item => item.id === player.id)} scoreSoll={player.scoreSoll} scoreIst={player.scoreIst} /><strong>{player.name}</strong><ChevronDown size={15} className="player-expand-icon" /></button></div></td><td><span className="played-stat">{player.played}</span></td><td>{player.drove}</td><td>{number(player.km)}<span className="unit"> km</span></td>{dutyOptions.map(([field]) => <td key={field}>{player[field]}</td>)}<td>{player.extra}</td><td className="score-cell score-column-soll">{number(player.scoreSoll)}</td><td className="score-cell score-column-ist">{number(player.scoreIst)}</td><td className="money-cell">{euro(player.reimbursement)}</td><td><div className="row-actions"><IconButton label={`${player.name} bearbeiten`} disabled={readOnly} onClick={() => setDialog({ type: 'player', player })}><Pencil size={15} /></IconButton><IconButton label={`${player.name} löschen`} className="danger-hover" disabled={readOnly} onClick={() => setDialog({ type: 'deletePlayer', player })}><Trash2 size={15} /></IconButton></div></td></tr>, expanded && <tr key={`${player.id}-details`} className="player-breakdown-row"><td colSpan={14}>{breakdown.length ? <div className="player-breakdown"><div className="player-breakdown-head"><span>Spieltag</span><span>Status</span><span>Zielbeitrag</span><span>Beitrag</span><span>Differenz</span></div>{breakdown.map(row => <div className="player-breakdown-item" key={row.matchId}><span><strong>{row.opponent}</strong><small>{row.matchId} · {shortDate(row.date)}</small></span><span>{row.played ? 'Gespielt' : 'Nicht gespielt'}</span><span>{number(row.zielbeitrag)}</span><span>{number(row.beitrag)}</span><span className={row.beitrag - row.zielbeitrag < -1e-9 ? 'breakdown-behind' : row.beitrag - row.zielbeitrag > 1e-9 ? 'breakdown-ahead' : ''}>{row.beitrag - row.zielbeitrag > 1e-9 ? '+' : ''}{number(row.beitrag - row.zielbeitrag)}</span></div>)}</div> : <p className="empty-copy">Noch keine Spieltage für {player.name}.</p>}</td></tr>]; })}</tbody><tfoot><tr><td>Gesamt</td><td>{sum('played')}</td><td>{sum('drove')}</td><td>{number(sum('km'))} km</td>{dutyOptions.map(([field]) => <td key={field}>{sum(field)}</td>)}<td>{sum('extra')}</td><td className="score-column-soll">{number(totalSoll)}</td><td className="score-column-ist">{number(totalIst)}</td><td>{euro(sum('reimbursement'))}</td><td /></tr></tfoot></table></div>
       {!data.players.length && <div className="empty-state"><Users size={32} /><h4>Deine Mannschaft beginnt hier</h4><button className="button secondary" disabled={readOnly} onClick={() => setDialog({ type: 'player' })}><Plus size={17} />Spieler anlegen</button></div>}

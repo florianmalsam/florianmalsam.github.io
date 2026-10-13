@@ -136,7 +136,7 @@ export function validateState(state) {
   for (const player of state.players) {
     if (typeof player.id !== 'string' || !player.id || playerIds.has(player.id)) throw new Error('Spieler-IDs müssen eindeutig sein.');
     if (typeof player.name !== 'string' || !normalizedName(player.name) || names.has(normalizedName(player.name))) throw new Error('Spielernamen müssen ausgefüllt und eindeutig sein. Bei gleichen Vornamen bitte Nachnamen ergänzen.');
-    if (player.sollFactor !== undefined && (!Number.isFinite(player.sollFactor) || player.sollFactor < 0 || player.sollFactor > 1)) throw new Error('Der SOLL-Faktor muss zwischen 0 und 100 Prozent liegen.');
+    if (player.isExemptFromPoints !== undefined && typeof player.isExemptFromPoints !== 'boolean') throw new Error('Außerhalb der Wertung muss als Ja/Nein-Wert gespeichert sein.');
     playerIds.add(player.id);
     names.add(normalizedName(player.name));
   }
@@ -210,6 +210,13 @@ export function validateState(state) {
   if (state.treasuryResetOffsetCents !== undefined && !Number.isSafeInteger(state.treasuryResetOffsetCents)) throw new Error('Der Reset-Ausgleich muss ein ganzer Centbetrag sein.');
   if (state.treasuryResetAt !== undefined && (typeof state.treasuryResetAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(state.treasuryResetAt) || !Number.isFinite(Date.parse(state.treasuryResetAt)) || new Date(state.treasuryResetAt).toISOString() !== state.treasuryResetAt)) throw new Error('Ungültiger Reset-Zeitpunkt.');
   let next = state;
+  if (state.players.some(player => Object.hasOwn(player, 'sollFactor'))) {
+    next = { ...next, players: state.players.map(player => {
+      const normalized = { ...player };
+      delete normalized.sollFactor;
+      return normalized;
+    }) };
+  }
   if (state.expenses?.some(expense => expense.paidByPlayerId === undefined)) {
     const expenses = state.expenses.map(expense => {
       if (expense.paidByPlayerId !== undefined) return expense;
@@ -269,7 +276,7 @@ export function removePlayer(state, playerId) {
 }
 
 export function addPlayer(state, name) {
-  const next = { ...state, players: [...state.players, { id: crypto.randomUUID(), name: name.trim().replace(/\s+/g, ' '), sollFactor: 1 }] };
+  const next = { ...state, players: [...state.players, { id: crypto.randomUUID(), name: name.trim().replace(/\s+/g, ' '), isExemptFromPoints: false }] };
   return validateState(next);
 }
 
@@ -287,12 +294,16 @@ export function updateEntry(state, matchId, playerId, patch) {
   return validateState({ ...state, entries });
 }
 
+function entryEffort(entry, points) {
+  return entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
+}
+
 export function matchFactor(state, matchId) {
   const entries = state.entries.filter(entry => entry.matchId === matchId);
   const playersById = new Map(state.players.map(player => [player.id, player]));
-  const targetWeight = entries.reduce((total, entry) => total + (entry.played ? (playersById.get(entry.playerId)?.sollFactor ?? 1) : 0), 0);
+  const targetWeight = entries.reduce((total, entry) => total + (entry.played && !playersById.get(entry.playerId)?.isExemptFromPoints ? 1 : 0), 0);
   const points = dutyPoints(state);
-  const teamEffort = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
+  const teamEffort = entries.reduce((total, entry) => total + (!playersById.get(entry.playerId)?.isExemptFromPoints ? entryEffort(entry, points) : 0), 0);
   return targetWeight ? teamEffort / targetWeight : 0;
 }
 
@@ -301,9 +312,9 @@ export function playerMatchBreakdown(state, playerId) {
   return [...state.matches].sort((first, second) => first.date.localeCompare(second.date)).reduce((rows, match) => {
     const entry = state.entries.find(item => item.matchId === match.id && item.playerId === playerId);
     if (!entry) return rows;
-    const beitrag = entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
     const player = state.players.find(item => item.id === playerId);
-    const zielbeitrag = entry.played ? matchFactor(state, match.id) * (player?.sollFactor ?? 1) : 0;
+    const beitrag = player?.isExemptFromPoints ? 0 : entryEffort(entry, points);
+    const zielbeitrag = entry.played && !player?.isExemptFromPoints ? matchFactor(state, match.id) : 0;
     rows.push({ matchId: match.id, date: match.date, opponent: match.opponent, played: entry.played, zielbeitrag, beitrag });
     return rows;
   }, []);
@@ -316,9 +327,10 @@ export function statistics(state) {
     const entries = state.entries.filter(entry => entry.playerId === player.id);
     const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);
     const km = sum('km');
-    const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
-    const scoreSoll = entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) * (player.sollFactor ?? 1) : 0), 0);
-    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), tablet: sum('tablet'), extra: sum('extra'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
+    const contributionPoints = entries.reduce((total, entry) => total + entryEffort(entry, points), 0);
+    const scoreIst = player.isExemptFromPoints ? 0 : contributionPoints;
+    const scoreSoll = player.isExemptFromPoints ? 0 : entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) : 0), 0);
+    return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), tablet: sum('tablet'), extra: sum('extra'), contributionPoints, scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
   });
 }
 

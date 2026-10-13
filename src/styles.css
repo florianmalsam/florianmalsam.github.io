@@ -253,7 +253,9 @@ input::placeholder { color: #7891b5; }
 .settings-row input { height: 36px; padding: 0 8px; border: 1px solid #c9dcf7; border-radius: 5px; background: white; }
 .settings-row input:focus-visible { outline: 2px solid #8bc4ff; outline-offset: 2px; }
 .stats-scroll { overflow-x: auto; }
-.stats-table { border-collapse: collapse; width: 100%; min-width: 1120px; text-align: center; font-size: 12px; }
+.stats-table { border-collapse: collapse; width: 100%; min-width: 900px; text-align: center; font-size: 12px; }
+.stats-table.show-duty-details { min-width: 1120px; }
+.stats-table:not(.show-duty-details) tr > :nth-child(n+5):nth-child(-n+10) { display: none; }
 .stats-table th { background: #e5efff; color: #46658f; font-size: 11px; font-weight: 500; padding: 15px 10px; border-block: 1px solid #c9dcf7; }
 .stats-header-label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .stats-sort-button { display: inline-flex; align-items: center; gap: 4px; border: 0; padding: 0; background: transparent; font: inherit; }

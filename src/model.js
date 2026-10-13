@@ -136,6 +136,7 @@ export function validateState(state) {
   for (const player of state.players) {
     if (typeof player.id !== 'string' || !player.id || playerIds.has(player.id)) throw new Error('Spieler-IDs müssen eindeutig sein.');
     if (typeof player.name !== 'string' || !normalizedName(player.name) || names.has(normalizedName(player.name))) throw new Error('Spielernamen müssen ausgefüllt und eindeutig sein. Bei gleichen Vornamen bitte Nachnamen ergänzen.');
+    if (player.sollFactor !== undefined && (!Number.isFinite(player.sollFactor) || player.sollFactor < 0 || player.sollFactor > 1)) throw new Error('Der SOLL-Faktor muss zwischen 0 und 100 Prozent liegen.');
     playerIds.add(player.id);
     names.add(normalizedName(player.name));
   }
@@ -268,7 +269,7 @@ export function removePlayer(state, playerId) {
 }
 
 export function addPlayer(state, name) {
-  const next = { ...state, players: [...state.players, { id: crypto.randomUUID(), name: name.trim().replace(/\s+/g, ' ') }] };
+  const next = { ...state, players: [...state.players, { id: crypto.randomUUID(), name: name.trim().replace(/\s+/g, ' '), sollFactor: 1 }] };
   return validateState(next);
 }
 
@@ -288,10 +289,11 @@ export function updateEntry(state, matchId, playerId, patch) {
 
 export function matchFactor(state, matchId) {
   const entries = state.entries.filter(entry => entry.matchId === matchId);
-  const participations = entries.filter(entry => entry.played).length;
+  const playersById = new Map(state.players.map(player => [player.id, player]));
+  const targetWeight = entries.reduce((total, entry) => total + (entry.played ? (playersById.get(entry.playerId)?.sollFactor ?? 1) : 0), 0);
   const points = dutyPoints(state);
   const teamEffort = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
-  return participations ? teamEffort / participations : 0;
+  return targetWeight ? teamEffort / targetWeight : 0;
 }
 
 export function playerMatchBreakdown(state, playerId) {
@@ -300,7 +302,8 @@ export function playerMatchBreakdown(state, playerId) {
     const entry = state.entries.find(item => item.matchId === match.id && item.playerId === playerId);
     if (!entry) return rows;
     const beitrag = entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0);
-    const zielbeitrag = entry.played ? matchFactor(state, match.id) : 0;
+    const player = state.players.find(item => item.id === playerId);
+    const zielbeitrag = entry.played ? matchFactor(state, match.id) * (player?.sollFactor ?? 1) : 0;
     rows.push({ matchId: match.id, date: match.date, opponent: match.opponent, played: entry.played, zielbeitrag, beitrag });
     return rows;
   }, []);
@@ -314,7 +317,7 @@ export function statistics(state) {
     const sum = field => entries.reduce((total, entry) => total + (entry[field] || 0), 0);
     const km = sum('km');
     const scoreIst = entries.reduce((total, entry) => total + entry.ref1 * points.ref1 + entry.ref2 * points.ref2 + entry.table * points.table + (entry.lines || 0) * points.lines + (entry.tablet || 0) * points.tablet + (entry.drove ? points.drive : 0) + (entry.extra || 0), 0);
-    const scoreSoll = entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) : 0), 0);
+    const scoreSoll = entries.reduce((total, entry) => total + (entry.played ? factorByMatch.get(entry.matchId) * (player.sollFactor ?? 1) : 0), 0);
     return { ...player, played: entries.filter(entry => entry.played).length, drove: entries.filter(entry => entry.drove).length, km, ref1: sum('ref1'), ref2: sum('ref2'), table: sum('table'), lines: sum('lines'), tablet: sum('tablet'), extra: sum('extra'), scoreIst, scoreSoll, reimbursement: Math.round((km * state.rate + Number.EPSILON) * 100) / 100 };
   });
 }

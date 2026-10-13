@@ -329,6 +329,21 @@ test('SOLL wird pro Spieltag aus Team-Dienstpunkten je gespielter Teilnahme bere
   assert.ok(Math.abs(david.scoreSoll - 14 / 3) < 1e-10);
 });
 
+test('SOLL-Faktoren teilen den Spieltagsaufwand gewichtet auf und lassen den Punkte-Topf unverändert', () => {
+  const base = exampleData();
+  const players = Array.from({ length: 10 }, (_, index) => ({ id: `P${index + 1}`, name: `Spieler ${index + 1}`, sollFactor: index === 0 ? 0 : index === 1 ? 0.5 : 1 }));
+  const entries = players.map((player, index) => ({ matchId: 'ST01', playerId: player.id, played: true, drove: false, km: 0, ref1: index === 0 ? 1 : 0, ref2: index === 1 ? 1 : 0, table: index === 2 || index === 3 ? 1 : 0, lines: 0, tablet: 0 }));
+  const state = validateState({ ...base, players, matches: [base.matches[0]], entries });
+  const totals = statistics(state);
+  const dayTarget = 7 / 8.5;
+
+  assert.ok(Math.abs(matchFactor(state, 'ST01') - dayTarget) < 1e-10);
+  assert.equal(totals[0].scoreSoll, 0);
+  assert.ok(Math.abs(totals[1].scoreSoll - dayTarget * 0.5) < 1e-10);
+  assert.ok(Math.abs(totals.slice(1).reduce((total, player) => total + player.scoreSoll, 0) - 7) < 1e-10);
+  assert.throws(() => validateState({ ...state, players: state.players.map((player, index) => index === 0 ? { ...player, sollFactor: 1.01 } : player) }), /SOLL-Faktor/);
+});
+
 test('Dienstpunkte lassen sich konfigurieren und ungültige Werte werden abgewiesen', () => {
   const state = { ...exampleData(), dutyPoints: { ref1: 5, ref2: 2, table: 1 } };
   assert.equal(statistics(state)[0].scoreIst, 7);

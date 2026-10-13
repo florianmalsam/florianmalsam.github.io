@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Check, History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, REIMBURSEMENT_STATUSES, expenseTotals, expensePayer, incomeTotal, moneyCents, treasuryTotals, validateState } from './model.js';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, REIMBURSEMENT_STATUSES, expenseTotals, expenseReimbursementOverview, expensePayer, incomeTotal, moneyCents, treasuryTotals, validateState } from './model.js';
 
 const euro = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 const dateLabel = date => new Intl.DateTimeFormat('de-DE').format(new Date(`${date}T12:00:00`));
@@ -50,28 +50,23 @@ export function ExpenseForm({ data, expense, matchId = null, onSave, onClose, ki
   </form>;
 }
 
-export function TreasurySummary({ data, readOnly, onEdit }) {
+export function TreasurySummary({ data }) {
   const totals = treasuryTotals(data);
+  const reimbursements = expenseReimbursementOverview(data);
+  const availableCents = totals.balanceCents - reimbursements.openCents;
+  const playersWithReimbursements = reimbursements.players.filter(player => player.openCents || player.reimbursedCents).sort((first, second) => first.name.localeCompare(second.name, 'de-DE'));
   return <><section className="treasury-summary" aria-label="Mannschaftskasse" aria-live="polite">
-    <div className="treasury-balance"><span>Kassenstand</span><strong className={totals.balanceCents < 0 ? 'negative-balance' : ''}>{euro(data.treasuryBalanceCents ?? totals.balanceCents)}</strong></div>
+    <div className="treasury-balance"><span>Tatsächlicher Kassenbestand</span><strong className={totals.balanceCents < 0 ? 'negative-balance' : ''}>{euro(totals.balanceCents)}</strong></div>
+    <div className="treasury-open"><span>Offene Erstattungen</span><strong>{euro(reimbursements.openCents)}</strong></div>
+    <div className="treasury-available"><span>Verfügbar nach Erstattungen</span><strong className={availableCents < 0 ? 'negative-balance' : ''}>{euro(availableCents)}</strong></div>
     <div><span>Einnahmen</span><strong>{euro(totals.incomeCents)}</strong></div>
     <div><span>Aus der Kasse bezahlt</span><strong>{euro(totals.paidCents)}</strong></div>
-    <div><span className="treasury-opening-label">Anfangsbestand<button className="icon-button" title="Anfangsbestand bearbeiten" aria-label="Anfangsbestand bearbeiten" disabled={readOnly} onClick={onEdit}><Pencil size={15} /></button></span><strong>{euro(totals.openingCents)}</strong></div>
-  </section>{data.treasuryResetAt && <div className="treasury-reset-note"><span>Reset-Ausgleich vom {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(data.treasuryResetAt))}</span><strong>{euro(data.treasuryResetOffsetCents ?? 0)}</strong></div>}</>;
-}
-
-export function TreasuryForm({ data, onSave, onClose }) {
-  const [amount, setAmount] = useState(((data.treasuryOpeningBalanceCents ?? 0) / 100).toFixed(2).replace('.', ','));
-  const [error, setError] = useState('');
-  return <form onSubmit={event => {
-    event.preventDefault();
-    try { onSave(validateState({ ...data, treasuryOpeningBalanceCents: moneyCents(amount, true) })); }
-    catch (caught) { setError(caught.message); }
-  }}>
-    <label className="field">Anfangsbestand (€)<input autoFocus required inputMode="decimal" maxLength={17} value={amount} onChange={event => setAmount(event.target.value)} /></label>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Abbrechen</button><button className="button primary"><Check size={17} />Speichern</button></div>
-  </form>;
+  </section>
+  {data.treasuryResetAt && <div className="treasury-reset-note"><span>Reset-Ausgleich vom {new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(data.treasuryResetAt))}</span><strong>{euro(data.treasuryResetOffsetCents ?? 0)}</strong></div>}
+  <section className="reimbursement-overview" aria-label="Erstattungen nach Spieler">
+    <h2>Erstattungen nach Spieler</h2>
+    {playersWithReimbursements.length ? <div className="expense-scroll"><table className="expense-table reimbursement-table"><thead><tr><th>Spieler</th><th>Offen</th><th>Bereits erstattet</th></tr></thead><tbody>{playersWithReimbursements.map(player => <tr key={player.id}><td>{player.name}</td><td className="expense-amount">{euro(player.openCents)}</td><td className="expense-amount">{euro(player.reimbursedCents)}</td></tr>)}</tbody></table></div> : <p className="empty-copy">Noch keine offenen oder erstatteten Auslagen.</p>}
+  </section></>;
 }
 
 export default function Expenses({ data, matchId, readOnly, onAdd, onEdit, onDelete, onHistory, kind = 'expense' }) {

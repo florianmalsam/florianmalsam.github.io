@@ -80,8 +80,25 @@ export function treasuryTotals(state) {
 export function expenseTotals(expenses = []) {
   return expenses.reduce((totals, expense) => ({
     amountCents: totals.amountCents + expense.amountCents,
-    openCents: totals.openCents + (expense.reimbursementStatus === 'open' ? expense.amountCents : 0),
+    openCents: totals.openCents + (expense.reimbursementStatus === 'open' && expense.paidByPlayerId !== null ? expense.amountCents : 0),
   }), { amountCents: 0, openCents: 0 });
+}
+
+export function expenseReimbursementOverview(state) {
+  const players = state.players.map(player => ({ ...player, openCents: 0, reimbursedCents: 0 }));
+  const playersById = new Map(players.map(player => [player.id, player]));
+  let openCents = 0;
+  for (const expense of state.expenses || []) {
+    if (expense.paidByPlayerId === null) continue;
+    const player = playersById.get(expense.paidByPlayerId);
+    if (expense.reimbursementStatus === 'open') {
+      openCents += expense.amountCents;
+      if (player) player.openCents += expense.amountCents;
+    } else if (expense.reimbursementStatus === 'reimbursed' && player) {
+      player.reimbursedCents += expense.amountCents;
+    }
+  }
+  return { openCents, players };
 }
 
 export function dutyPoints(state) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
+import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expenseReimbursementOverview, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
 
 const sampleExpense = { id: 'E1', date: '2026-10-17', description: 'Getränke', amountCents: 4250, category: 'catering', matchId: 'ST01', paidByPlayerId: 'P1', reimbursementStatus: 'open', note: '' };
 const sampleIncome = { id: 'I1', date: '2026-10-17', description: 'Getränkeverkauf', amountCents: 10000, category: 'catering', matchId: 'ST01', note: '' };
@@ -141,6 +141,21 @@ test('Kassenstand wird nach Änderungen neu berechnet und Kassen-Ausgaben nur ei
   assert.equal(state.treasuryBalanceCents, -4250);
   assert.equal(validateState({ ...state, expenses: [] }).treasuryBalanceCents, 0);
   assert.equal(validateState({ ...state, treasuryBalanceCents: 12345 }).treasuryBalanceCents, -4250);
+});
+
+test('Offene Erstattungen verringern verfügbares Geld und werden je Spieler summiert', () => {
+  const state = validateState({ ...exampleData(), treasuryOpeningBalanceCents: 5800, expenses: [{ ...sampleExpense, amountCents: 2000 }] });
+  const overview = expenseReimbursementOverview(state);
+  assert.equal(state.treasuryBalanceCents, 5800);
+  assert.equal(overview.openCents, 2000);
+  assert.equal(state.treasuryBalanceCents - overview.openCents, 3800);
+  assert.equal(overview.players.find(player => player.id === 'P1').openCents, 2000);
+
+  const reimbursed = validateState({ ...state, expenses: [{ ...sampleExpense, amountCents: 2000, reimbursementStatus: 'reimbursed' }] });
+  const reimbursedOverview = expenseReimbursementOverview(reimbursed);
+  assert.equal(reimbursedOverview.openCents, 0);
+  assert.equal(reimbursedOverview.players.find(player => player.id === 'P1').reimbursedCents, 2000);
+  assert.equal(expenseTotals([{ ...sampleExpense, paidByPlayerId: null, reimbursementStatus: 'open' }]).openCents, 0);
 });
 
 test('Alte Backups bekommen Einnahmen und Kassenbestand ohne Datenverlust', () => {

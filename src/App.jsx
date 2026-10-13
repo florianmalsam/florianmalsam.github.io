@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Beer, CalendarDays, Car, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Euro, ExternalLink, Eye, EyeOff, History, LogOut, MapPin, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Star, Trash2, Users, X } from 'lucide-react';
 import { STORAGE_KEY, DEFAULT_LINE_POINTS_CAP, dutyPoints, exampleData, validateState, addPlayer, removePlayer, addEntry, updateEntry, matchFactor, playerMatchBreakdown, statistics, nextMatchId, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
-import Expenses, { ExpenseForm, TreasurySummary, TreasuryForm } from './Expenses.jsx';
+import Expenses, { ExpenseForm, TreasurySummary } from './Expenses.jsx';
 import FinanceJournal from './FinanceJournal.jsx';
 
 const number = value => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(value);
@@ -542,7 +542,7 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
     </main> : view === 'vlw' ? <VlwBrowser readOnly={readOnly} /> : view === 'expenses' ? <main className="team-page expenses-page">
       <div className="breadcrumb">Dein Team <ChevronRight size={13} /><span>Finanzen</span></div>
       <div className="team-heading"><div><span className="eyebrow">MANNSCHAFTSFINANZEN</span><h1>Mannschaftskasse</h1></div><button className="button secondary danger-hover" title={!onResetFinances ? 'Nur mit Admin-Anmeldung verfügbar' : 'Verlauf löschen und Kasse auf 0 setzen'} disabled={readOnly || !onResetFinances || cloudStatus === 'saving' || cloudStatus === 'error'} onClick={() => setDialog({ type: 'resetFinances' })}><Trash2 size={17} />Kasse zurücksetzen</button></div>
-      <TreasurySummary data={data} readOnly={readOnly} onEdit={() => setDialog({ type: 'treasury' })} />
+      <TreasurySummary data={data} />
       <div className="finance-tabs" role="tablist" aria-label="Finanzbuchungen"><button id="expenses-tab" role="tab" aria-selected={financeView === 'expenses'} aria-controls="finance-panel" onClick={() => setFinanceView('expenses')}><ArrowUp size={16} />Ausgaben</button><button id="incomes-tab" role="tab" aria-selected={financeView === 'incomes'} aria-controls="finance-panel" onClick={() => setFinanceView('incomes')}><ArrowDown size={16} />Einnahmen</button><button id="history-tab" role="tab" aria-selected={financeView === 'history'} aria-controls="finance-panel" onClick={() => setFinanceView('history')}><History size={16} />Verlauf</button></div>
       <div id="finance-panel" role="tabpanel" aria-labelledby={financeView === 'expenses' ? 'expenses-tab' : financeView === 'incomes' ? 'incomes-tab' : 'history-tab'}>
         {financeView === 'history' ? <FinanceJournal data={data} /> : financeView === 'expenses' ? <Expenses key="expenses" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'expense' })} onEdit={expense => setDialog({ type: 'expense', expense })} onDelete={expense => setDialog({ type: 'deleteExpense', expense })} onHistory={expense => setDialog({ type: 'financeHistory', kind: 'expense', item: expense })} /> : <Expenses key="incomes" kind="income" data={data} readOnly={readOnly} onAdd={() => setDialog({ type: 'income' })} onEdit={income => setDialog({ type: 'income', income })} onDelete={income => setDialog({ type: 'deleteIncome', income })} onHistory={income => setDialog({ type: 'financeHistory', kind: 'income', item: income })} />}
@@ -583,7 +583,6 @@ export default function App({ initialData, persist, cloudStatus, readOnly = fals
     {dialog?.type === 'match' && <MatchForm data={data} match={dialog.match} onClose={closeDialog} onSave={(next, id) => { if (commit(next, 'Spieltag gespeichert.')) { chooseMatch(id); closeDialog(); } }} />}
     {dialog?.type === 'expense' && <Modal title={dialog.expense ? 'Ausgabe bearbeiten' : 'Neue Ausgabe'} onClose={closeDialog}><ExpenseForm data={data} expense={dialog.expense} matchId={dialog.matchId} onClose={closeDialog} onSave={next => { if (commit(next, 'Ausgabe gespeichert.')) closeDialog(); }} /></Modal>}
     {dialog?.type === 'income' && <Modal title={dialog.income ? 'Einnahme bearbeiten' : 'Neue Einnahme'} onClose={closeDialog}><ExpenseForm kind="income" data={data} expense={dialog.income} matchId={dialog.matchId} onClose={closeDialog} onSave={next => { if (commit(next, 'Einnahme gespeichert.')) closeDialog(); }} /></Modal>}
-    {dialog?.type === 'treasury' && <Modal title="Anfangsbestand bearbeiten" onClose={closeDialog}><TreasuryForm data={data} onClose={closeDialog} onSave={next => { if (commit(next, 'Anfangsbestand gespeichert.')) closeDialog(); }} /></Modal>}
     {dialog?.type === 'resetFinances' && <ResetFinanceDialog onClose={closeDialog} onBackup={exportData} onReset={async password => {
       if (readOnly || !onResetFinances) throw new Error('Nur der angemeldete Admin darf die Kasse zurücksetzen.');
       const next = resetFinances(data);

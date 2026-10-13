@@ -317,16 +317,22 @@ input::placeholder { color: #7891b5; }
 @keyframes enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 .main-content, .team-page { animation: enter .3s ease-out; }
 .expenses-section { padding-top: 32px; min-width: 0; }
-.treasury-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; padding: 24px 0; margin: 24px 0; border-block: 1px solid var(--line); }
+.treasury-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; padding: 24px 0; margin: 24px 0; border-block: 1px solid var(--line); }
 .treasury-summary > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .treasury-summary span { color: var(--muted); font-size: 11px; min-height: 24px; display: flex; align-items: center; }
 .treasury-summary strong { font-size: 22px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .treasury-balance strong { color: #248455; }
 .treasury-balance .negative-balance { color: #b44f3b; }
-.treasury-opening-label { gap: 6px; }
-.treasury-opening-label .icon-button { height: 24px; width: 24px; }
+.treasury-open strong { color: #b44f3b; }
+.treasury-available strong { color: #248455; }
+.treasury-available .negative-balance { color: #b44f3b; }
 .treasury-reset-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: -12px 0 24px; color: var(--muted); font-size: 11px; }
 .treasury-reset-note strong { font-variant-numeric: tabular-nums; }
+.reimbursement-overview { margin: 8px 0 28px; }
+.reimbursement-overview h2 { margin-bottom: 12px; font-size: 15px; }
+.reimbursement-table { min-width: 0; max-width: 720px; }
+.reimbursement-table th:not(:first-child), .reimbursement-table td:not(:first-child) { text-align: right; }
+.reimbursement-table th:first-child { width: 50%; }
 .reset-confirmation { display: flex; align-items: flex-start; gap: 9px; margin: 20px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .reset-confirmation input { width: 16px; height: 16px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--green); }
 .expenses-page .team-heading { flex-wrap: wrap; }
@@ -340,6 +346,7 @@ input::placeholder { color: #7891b5; }
 .journal-description > strong { font-weight: 600; }
 .expense-table .journal-positive { color: #248455; }
 .expense-table .journal-negative { color: #b44f3b; }
+@media (max-width: 1000px) { .treasury-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .journal-details { margin-top: 8px; }
 .journal-details > summary { cursor: pointer; color: var(--green); font-size: 11px; width: fit-content; }
 .journal-change-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; margin-top: 10px; }

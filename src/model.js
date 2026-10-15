@@ -1,3 +1,129 @@
+/*
+ * DATENMODELL DER MANNSCHAFT
+ * Bei Änderungen am Datenmodell diese Übersicht mit aktualisieren.
+ *
+ * Speicherung: Ein Mannschaftsobjekt als JSON im Supabase-Feld team_state.payload.
+ * Lokal wird dasselbe Objekt unter dem Schlüssel "seitenwechsel-v1" gespeichert.
+ * Die folgende Struktur beschreibt Daten, keinen ausführbaren JavaScript-Code.
+ * "?" bedeutet optional; ältere Daten können diese Felder noch nicht enthalten.
+ * Alle *Cents-Felder sind ganze Centbeträge: 4250 = 42,50 EUR.
+ * Datum: YYYY-MM-DD; Zeitstempel: ISO-UTC, z. B. 2026-10-15T12:00:00.000Z.
+ *
+ * Mannschaft {
+ *   version: 1
+ *   rate: Zahl                         Fahrtkostensatz in EUR pro Kilometer
+ *   dutyPoints?: {                     Punkte pro Aufgabe; Standardwerte:
+ *     ref1: 3, ref2: 2, table: 1, lines: 1, tablet: 1, drive: 1
+ *   }
+ *   linePointsCap?: Zahl               Max. Linien-Punkte je Spieltag; Standard: 2
+ *   players: Spieler[]
+ *   matches: Spieltag[]
+ *   entries: Einsatz[]
+ *   expenses?: Ausgabe[]
+ *   incomes?: Einnahme[]
+ *   beerEntries?: BierEintrag[]         Separat von der Mannschaftskasse
+ *   treasuryOpeningBalanceCents?: Zahl  Anfangsbestand; Standard: 0
+ *   treasuryBalanceCents?: Zahl         Berechneter aktueller Kassenbestand
+ *   treasuryResetOffsetCents?: Zahl     Ausgleich nach Kassenreset; Standard: 0
+ *   treasuryResetAt?: Zeitstempel       Zeitpunkt des letzten Kassenresets
+ *   financeJournal?: JournalEintrag[]   Finanzhistorie, älteste Buchung zuerst
+ * }
+ *
+ * Spieler {
+ *   id: Text                           Eindeutig; wird von anderen Daten referenziert
+ *   name: Text                         Ausgefüllt und innerhalb des Teams eindeutig
+ *   isExemptFromPoints?: Ja/Nein        Außerhalb der Punktewertung; Standard: nein
+ * }
+ *
+ * Spieltag {
+ *   id: Text                           Eindeutig, z. B. "ST01"
+ *   date: Datum
+ *   location: Text                     Spielort
+ *   opponent: Text                     Gegner
+ *   standardKm: Zahl                   Standardstrecke, mindestens 0
+ * }
+ *
+ * Einsatz {
+ *   matchId: Spieltag.id
+ *   playerId: Spieler.id               Kombination mit matchId muss eindeutig sein
+ *   played: Ja/Nein                    Hat mitgespielt
+ *   drove: Ja/Nein                     Ist gefahren
+ *   km: Zahl                           Mindestens 0; ohne Fahrt immer 0
+ *   ref1: ganze Zahl                   Anzahl Dienste als 1. Schiedsrichter
+ *   ref2: ganze Zahl                   Anzahl Dienste als 2. Schiedsrichter
+ *   table: ganze Zahl                  Anzahl Schreiberdienste
+ *   lines?: ganze Zahl                 Anzahl Liniendienste
+ *   tablet?: ganze Zahl                Anzahl Tablet-Dienste
+ *   extra?: ganze Zahl                 Zusätzliche Punkte
+ *   extraDescription?: Text            Beschreibung der zusätzlichen Punkte
+ * }                                    Dienste und Extra-Punkte sind mindestens 0.
+ *
+ * Ausgabe {
+ *   id: Text                           Eindeutig innerhalb der Ausgaben
+ *   date: Datum
+ *   description: Text                  Beschreibung, nicht leer
+ *   amountCents: positive ganze Zahl   Gesamtbetrag der Ausgabe
+ *   category: catering | marketing | equipment | other
+ *   matchId: Spieltag.id | null         null = ohne Spieltagsbezug
+ *   paidByPlayerId: Spieler.id | null   null = direkt aus der Mannschaftskasse bezahlt
+ *   reimbursementStatus: not_required | open | partial | reimbursed
+ *   reimbursedCents?: ganze Zahl       Bisher erstatteter Gesamtbetrag, nicht Einzelzahlung
+ *   note: Text                         Notiz, darf leer sein
+ * }
+ * Erstattungsregeln:
+ *   not_required = keine Erstattung; open = noch nichts erstattet.
+ *   partial = 0 < reimbursedCents < amountCents, nur für Spielerauslagen.
+ *   reimbursed = vollständig erstattet; reimbursedCents darf fehlen.
+ *   Offen bleibt bei open/partial: Gesamtbetrag minus bereits erstatteter Betrag.
+ *   Nur tatsächlich gezahlte Erstattungen belasten die Kasse.
+ *   Ältere Ausgaben können statt paidByPlayerId noch paidBy (Zahlername) enthalten.
+ *   Bekannte Namen werden zugeordnet; unbekannte bleiben zur manuellen Zuordnung.
+ *
+ * Einnahme {
+ *   id: Text                           Eindeutig innerhalb der Einnahmen
+ *   date: Datum
+ *   description: Text                  Beschreibung, nicht leer
+ *   amountCents: positive ganze Zahl
+ *   category: catering | sponsorship | contribution | donation | other
+ *   matchId: Spieltag.id | null
+ *   note: Text                         Darf leer sein
+ * }
+ *
+ * BierEintrag {
+ *   id: Text                           Eindeutig innerhalb der Biereinträge
+ *   playerId: Spieler.id
+ *   date: Datum
+ *   crates: positive ganze Zahl        Anzahl mitgebrachter Kisten
+ *   note: Text                         Darf leer sein
+ * }
+ *
+ * JournalEintrag {
+ *   id: Text                           Eindeutige Buchungs-ID
+ *   at: Zeitstempel
+ *   action: baseline | create | update | delete
+ *   kind: treasury | opening | income | expense
+ *   entityId: Ausgabe.id | Einnahme.id | null
+ *   before: Buchungsstand | null       null bei Startbestand und Neuanlage
+ *   after: Buchungsstand | null        null bei Löschung
+ *   deltaCents: ganze Zahl             Kassenänderung; Auszahlung ist negativ
+ *   balanceBeforeCents: ganze Zahl
+ *   balanceAfterCents: ganze Zahl      Vorheriger Bestand + Kassenänderung
+ * }
+ * Buchungsstand:
+ *   Bei treasury/opening: { amountCents }.
+ *   Bei income/expense: id, date, description, amountCents, category, matchId,
+ *   note und matchName (damaliger Gegnername).
+ *   Bei expense zusätzlich: paidByPlayerId, paidFromTreasury (Ja/Nein),
+ *   paidByName (damaliger Zahlername), reimbursementStatus und ggf. reimbursedCents.
+ *   Historische Namen bleiben auch nach späteren Umbenennungen erhalten.
+ *
+ * Kassenbestand = Anfangsbestand + Einnahmen - direkte Kassenausgaben
+ *                 - tatsächlich erstattete Spielerauslagen + Reset-Ausgleich.
+ * Verfügbar nach Erstattungen = Kassenbestand - noch offene Erstattungen.
+ * Fahrtkostenerstattungen werden separat aus km * rate berechnet;
+ * sie sind keine automatische Auszahlung aus der Mannschaftskasse.
+ */
+
 export const STORAGE_KEY = 'seitenwechsel-v1';
 export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, tablet: 1, drive: 1 };
 export const DEFAULT_LINE_POINTS_CAP = 2;

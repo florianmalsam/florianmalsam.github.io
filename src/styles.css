@@ -377,6 +377,25 @@ input::placeholder { color: #7891b5; }
 .expense-status { color: var(--muted); font-size: 11px; }
 .expense-status-open { color: #b44f3b; font-weight: 700; }
 .expense-status-reimbursed { color: #248455; }
+.expense-status-partial { color: #996514; font-weight: 700; }
+.reimbursement-progress { display: grid; gap: 5px; margin-top: 8px; min-width: 140px; font-variant-numeric: tabular-nums; }
+.reimbursement-progress small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.reimbursement-progress progress { width: 140px; height: 5px; border: 0; border-radius: 3px; overflow: hidden; background: #e5efff; accent-color: #248455; }
+.reimbursement-progress progress::-webkit-progress-bar { background: #e5efff; }
+.reimbursement-progress progress::-webkit-progress-value { background: #248455; }
+.reimbursement-progress progress::-moz-progress-bar { background: #248455; }
+.row-actions .reimbursement-action { color: #248455; background: #eaf6ef; }
+.reimbursement-recipient { display: grid; gap: 7px; margin-bottom: 22px; overflow-wrap: anywhere; }
+.reimbursement-recipient span { color: var(--muted); font-size: 12px; }
+.reimbursement-recipient strong { font-size: 17px; }
+.reimbursement-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding-block: 18px; margin: 0 0 22px; border-block: 1px solid var(--line); }
+.reimbursement-metrics dt { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.reimbursement-metrics dd { margin: 8px 0 0; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.reimbursement-fill { margin: -4px 0 20px; text-align: left; font-size: 12px; }
+.reimbursement-preview { display: grid; gap: 14px; padding-block: 18px; border-block: 1px solid var(--line); }
+.reimbursement-preview > div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; }
+.reimbursement-preview span { color: var(--muted); }
+.reimbursement-preview strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .field select, .field textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid #c9dcf7; border-radius: 5px; font: inherit; font-size: 13px; background: #fff; color: #071a3d; }
 .field textarea { resize: vertical; }
 @media (min-width: 761px) and (max-width: 1100px) {

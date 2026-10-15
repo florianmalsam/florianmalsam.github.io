@@ -3,7 +3,7 @@ export const DEFAULT_DUTY_POINTS = { ref1: 3, ref2: 2, table: 1, lines: 1, table
 export const DEFAULT_LINE_POINTS_CAP = 2;
 export const EXPENSE_CATEGORIES = { catering: 'Verpflegung', marketing: 'Marketing', equipment: 'Material', other: 'Sonstiges' };
 export const INCOME_CATEGORIES = { catering: 'Verpflegung', sponsorship: 'Sponsoring', contribution: 'Beiträge', donation: 'Spenden', other: 'Sonstiges' };
-export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', reimbursed: 'Erstattet' };
+export const REIMBURSEMENT_STATUSES = { not_required: 'Nicht nötig', open: 'Offen', partial: 'Teilweise erstattet', reimbursed: 'Erstattet' };
 export const JOURNAL_ACTIONS = { baseline: 'Startbestand', create: 'Angelegt', update: 'Geändert', delete: 'Gelöscht' };
 export const JOURNAL_KINDS = { treasury: 'Kasse', opening: 'Anfangsbestand', income: 'Einnahme', expense: 'Ausgabe' };
 
@@ -11,13 +11,14 @@ function journalSnapshot(state, kind, item) {
   if (!item) return null;
   const snapshot = { id: item.id, date: item.date, description: item.description, amountCents: item.amountCents, category: item.category, matchId: item.matchId, note: item.note, matchName: state.matches.find(match => match.id === item.matchId)?.opponent || '' };
   if (kind === 'expense') Object.assign(snapshot, { paidByPlayerId: item.paidByPlayerId ?? null, paidFromTreasury: item.paidByPlayerId === null, paidByName: expensePayer(state, item), reimbursementStatus: item.reimbursementStatus });
+  if (kind === 'expense' && item.reimbursedCents !== undefined) snapshot.reimbursedCents = item.reimbursedCents;
   return snapshot;
 }
 
 function journalImpact(kind, snapshot) {
   if (!snapshot) return 0;
   if (kind !== 'expense') return snapshot.amountCents;
-  return snapshot.paidFromTreasury || snapshot.reimbursementStatus === 'reimbursed' ? -snapshot.amountCents : 0;
+  return snapshot.paidFromTreasury ? -snapshot.amountCents : 0 - expenseReimbursedCents(snapshot);
 }
 
 export function initializeFinanceJournal(state, at = new Date().toISOString()) {
@@ -70,17 +71,29 @@ export function incomeTotal(incomes = []) {
   return incomes.reduce((total, income) => total + income.amountCents, 0);
 }
 
+export function expenseReimbursedCents(expense) {
+  return expense.reimbursementStatus === 'reimbursed' ? expense.amountCents : expense.reimbursementStatus === 'partial' ? expense.reimbursedCents : 0;
+}
+
+export function reimburseExpense(state, expenseId, amountCents) {
+  const expense = state.expenses?.find(item => item.id === expenseId);
+  if (!expense || !state.players.some(player => player.id === expense.paidByPlayerId) || !['open', 'partial'].includes(expense.reimbursementStatus)) throw new Error('Diese Ausgabe hat keine offene Spielererstattung.');
+  const reimbursedCents = expenseReimbursedCents(expense) + amountCents;
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || reimbursedCents > expense.amountCents) throw new Error('Der Erstattungsbetrag muss positiv sein und darf den offenen Betrag nicht überschreiten.');
+  return validateState({ ...state, expenses: state.expenses.map(item => item.id === expenseId ? { ...item, reimbursedCents, reimbursementStatus: reimbursedCents === item.amountCents ? 'reimbursed' : 'partial' } : item) });
+}
+
 export function treasuryTotals(state) {
   const openingCents = state.treasuryOpeningBalanceCents ?? 0;
   const incomeCents = incomeTotal(state.incomes);
-  const paidCents = (state.expenses || []).reduce((total, expense) => total + (expense.paidByPlayerId === null || expense.reimbursementStatus === 'reimbursed' ? expense.amountCents : 0), 0);
+  const paidCents = (state.expenses || []).reduce((total, expense) => total + (expense.paidByPlayerId === null ? expense.amountCents : expenseReimbursedCents(expense)), 0);
   return { openingCents, incomeCents, paidCents, balanceCents: openingCents + incomeCents - paidCents + (state.treasuryResetOffsetCents ?? 0) };
 }
 
 export function expenseTotals(expenses = []) {
   return expenses.reduce((totals, expense) => ({
     amountCents: totals.amountCents + expense.amountCents,
-    openCents: totals.openCents + (expense.reimbursementStatus === 'open' && expense.paidByPlayerId !== null ? expense.amountCents : 0),
+    openCents: totals.openCents + (['open', 'partial'].includes(expense.reimbursementStatus) && expense.paidByPlayerId !== null ? expense.amountCents - expenseReimbursedCents(expense) : 0),
   }), { amountCents: 0, openCents: 0 });
 }
 
@@ -91,11 +104,11 @@ export function expenseReimbursementOverview(state) {
   for (const expense of state.expenses || []) {
     if (expense.paidByPlayerId === null) continue;
     const player = playersById.get(expense.paidByPlayerId);
-    if (expense.reimbursementStatus === 'open') {
-      openCents += expense.amountCents;
-      if (player) player.openCents += expense.amountCents;
-    } else if (expense.reimbursementStatus === 'reimbursed' && player) {
-      player.reimbursedCents += expense.amountCents;
+    const remaining = expenseTotals([expense]).openCents;
+    openCents += remaining;
+    if (player) {
+      player.openCents += remaining;
+      player.reimbursedCents += expenseReimbursedCents(expense);
     }
   }
   return { openCents, players };
@@ -208,6 +221,7 @@ export function validateState(state) {
       throw new Error('Die Ausgabe verweist auf einen unbekannten zahlenden Spieler.');
     }
     if (!Object.hasOwn(REIMBURSEMENT_STATUSES, expense.reimbursementStatus)) throw new Error('Bitte einen gültigen Erstattungsstatus wählen.');
+    validateReimbursement(expense);
     if (typeof expense.note !== 'string') throw new Error('Die Ausgabennotiz muss Text sein.');
   }
   if (!Number.isSafeInteger(expenseTotals(state.expenses).amountCents)) throw new Error('Die Ausgabensumme ist zu groß.');
@@ -278,6 +292,7 @@ export function validateState(state) {
         if (entry.kind === 'income' || entry.kind === 'expense') {
           if (snapshot.id !== entry.entityId || snapshot.amountCents <= 0 || typeof snapshot.description !== 'string' || typeof snapshot.date !== 'string' || typeof snapshot.note !== 'string' || typeof snapshot.matchName !== 'string' || !Object.hasOwn(entry.kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES, snapshot.category) || (snapshot.matchId !== null && typeof snapshot.matchId !== 'string')) throw new Error('Ungültige Buchung im Journal.');
           if (entry.kind === 'expense' && (typeof snapshot.paidFromTreasury !== 'boolean' || typeof snapshot.paidByName !== 'string' || !Object.hasOwn(REIMBURSEMENT_STATUSES, snapshot.reimbursementStatus))) throw new Error('Ungültige Erstattung im Journal.');
+          if (entry.kind === 'expense') validateReimbursement(snapshot);
         }
       }
       if (entry.action === 'baseline' || entry.action === 'create' ? entry.before !== null || entry.after === null : entry.action === 'delete' ? entry.before === null || entry.after !== null : entry.before === null || entry.after === null) throw new Error('Ungültige Vorher-/Nachher-Werte im Journal.');
@@ -286,6 +301,12 @@ export function validateState(state) {
     }
   }
   return next;
+}
+
+function validateReimbursement(expense) {
+  if (expense.reimbursementStatus === 'partial') {
+    if (!Number.isSafeInteger(expense.reimbursedCents) || expense.reimbursedCents <= 0 || expense.reimbursedCents >= expense.amountCents || expense.paidByPlayerId === null || expense.paidFromTreasury) throw new Error('Eine Teilerstattung benötigt eine Spielerauslage und einen Betrag zwischen 0 und dem Gesamtbetrag.');
+  } else if (expense.reimbursedCents !== undefined && expense.reimbursedCents !== (expense.reimbursementStatus === 'reimbursed' ? expense.amountCents : 0)) throw new Error('Erstattungsbetrag und Status stimmen nicht überein.');
 }
 
 export function removePlayer(state, playerId) {

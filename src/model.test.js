@@ -1,8 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expenseReimbursementOverview, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents, initializeFinanceJournal, recordFinanceChanges, resetFinances } from './model.js';
+import { exampleData, validateState, statistics, matchFactor, playerMatchBreakdown, addEntry, addPlayer, updateEntry, nextMatchId, expenseTotals, expenseReimbursementOverview, expensePayer, removePlayer, incomeTotal, treasuryTotals, moneyCents, initializeFinanceJournal, recordFinanceChanges, resetFinances, reimburseExpense } from './model.js';
 
 const sampleExpense = { id: 'E1', date: '2026-10-17', description: 'Getränke', amountCents: 4250, category: 'catering', matchId: 'ST01', paidByPlayerId: 'P1', reimbursementStatus: 'open', note: '' };
+
+test('partial reimbursements reduce cash and outstanding amounts incrementally and survive backup', () => {
+  let state = initializeFinanceJournal({ ...exampleData(), treasuryOpeningBalanceCents: 10000, expenses: [sampleExpense] });
+  state = recordFinanceChanges(state, reimburseExpense(state, 'E1', 1000));
+  assert.equal(state.treasuryBalanceCents, 9000);
+  assert.equal(state.financeJournal.at(-1).deltaCents, -1000);
+  assert.equal(state.expenses[0].reimbursementStatus, 'partial');
+  assert.equal(expenseTotals(state.expenses).openCents, 3250);
+  assert.equal(expenseReimbursementOverview(state).players[0].reimbursedCents, 1000);
+  assert.equal(expenseReimbursementOverview(state).players[0].openCents, 3250);
+  state = recordFinanceChanges(state, reimburseExpense(state, 'E1', 2000));
+  assert.equal(state.financeJournal.at(-1).deltaCents, -2000);
+  assert.equal(state.treasuryBalanceCents, 7000);
+  assert.deepEqual(validateState(JSON.parse(JSON.stringify(state))), state);
+  state = recordFinanceChanges(state, reimburseExpense(state, 'E1', 1250));
+  assert.equal(state.expenses[0].reimbursementStatus, 'reimbursed');
+  assert.equal(state.treasuryBalanceCents, 5750);
+  assert.equal(expenseTotals(state.expenses).openCents, 0);
+  assert.equal(state.financeJournal.at(-1).deltaCents, -1250);
+  assert.throws(() => reimburseExpense(state, 'E1', 1), /offene/);
+});
+
+test('partial reimbursements reject invalid amounts and treasury expenses', () => {
+  const state = { ...exampleData(), expenses: [sampleExpense] };
+  for (const amount of [0, -1, 0.5, 4251, NaN]) assert.throws(() => reimburseExpense(state, 'E1', amount));
+  assert.throws(() => reimburseExpense({ ...state, expenses: [{ ...sampleExpense, paidByPlayerId: null }] }, 'E1', 100));
+  for (const reimbursedCents of [undefined, 0, -1, 4250, 5000, 1.5]) assert.throws(() => validateState({ ...state, expenses: [{ ...sampleExpense, reimbursementStatus: 'partial', reimbursedCents }] }));
+});
 const sampleIncome = { id: 'I1', date: '2026-10-17', description: 'Getränkeverkauf', amountCents: 10000, category: 'catering', matchId: 'ST01', note: '' };
 
 test('Kassenjournal startet mit dem aktuellen Bestand ohne erfundene Vorgeschichte', () => {

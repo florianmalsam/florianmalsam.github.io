@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Check, History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, REIMBURSEMENT_STATUSES, expenseTotals, expenseReimbursementOverview, expensePayer, incomeTotal, moneyCents, treasuryTotals, validateState } from './model.js';
+import { Banknote, Check, History, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, REIMBURSEMENT_STATUSES, expenseTotals, expenseReimbursementOverview, expenseReimbursedCents, expensePayer, incomeTotal, moneyCents, reimburseExpense, treasuryTotals, validateState } from './model.js';
 
 const euro = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 const dateLabel = date => new Intl.DateTimeFormat('de-DE').format(new Date(`${date}T12:00:00`));
@@ -14,6 +14,7 @@ export function ExpenseForm({ data, expense, matchId = null, onSave, onClose, ki
     ...(isIncome ? {} : { paidByPlayerId: null, reimbursementStatus: 'not_required' }),
   });
   const [amount, setAmount] = useState(expense ? (expense.amountCents / 100).toFixed(2).replace('.', ',') : '');
+  const [reimbursedAmount, setReimbursedAmount] = useState(expense?.reimbursementStatus === 'partial' ? (expense.reimbursedCents / 100).toFixed(2).replace('.', ',') : '');
   const [error, setError] = useState('');
   const field = (key, value) => setValues(current => ({ ...current, [key]: value }));
 
@@ -29,6 +30,11 @@ export function ExpenseForm({ data, expense, matchId = null, onSave, onClose, ki
       if (!isIncome && values.paidByPlayerId === undefined) throw new Error('Bitte einen Spieler oder die Mannschaftskasse auswählen.');
       const { paidBy, ...linkedValues } = values;
       const clean = { ...linkedValues, id: expense?.id || crypto.randomUUID(), amountCents, description: values.description.trim(), note: values.note.trim() };
+      if (!isIncome) {
+        delete clean.reimbursedCents;
+        if (clean.paidByPlayerId === null) clean.reimbursementStatus = 'not_required';
+        if (clean.reimbursementStatus === 'partial') clean.reimbursedCents = moneyCents(reimbursedAmount);
+      }
       const next = validateState({ ...data, [collection]: expense ? data[collection].map(item => item.id === expense.id ? clean : item) : [...(data[collection] || []), clean] });
       onSave(next);
     } catch (caught) { setError(caught.message); }
@@ -42,11 +48,40 @@ export function ExpenseForm({ data, expense, matchId = null, onSave, onClose, ki
     </div>
     <label className="field">Kategorie<select value={values.category} onChange={event => field('category', event.target.value)}>{Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     <label className="field">Spieltag<select value={values.matchId || ''} onChange={event => selectMatch(event.target.value)}><option value="">Ohne Spieltagsbezug</option>{[...data.matches].sort((first, second) => first.date.localeCompare(second.date)).map(match => <option key={match.id} value={match.id}>{match.id} · {dateLabel(match.date)} · {match.opponent}</option>)}</select></label>
-    {!isIncome && <><label className="field">Bezahlt von<select required value={values.paidByPlayerId === undefined ? '' : values.paidByPlayerId === null ? 'treasury' : `player:${values.paidByPlayerId}`} onChange={event => field('paidByPlayerId', event.target.value === 'treasury' ? null : event.target.value.slice('player:'.length))}>{values.paidByPlayerId === undefined && <option value="" disabled>Bitte zuordnen: {values.paidBy}</option>}<option value="treasury">Mannschaftskasse</option>{[...data.players].sort((first, second) => first.name.localeCompare(second.name, 'de-DE')).map(player => <option key={player.id} value={`player:${player.id}`}>{player.name}</option>)}</select></label>
-    <label className="field">Erstattung<select value={values.reimbursementStatus} onChange={event => field('reimbursementStatus', event.target.value)}>{Object.entries(REIMBURSEMENT_STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></>}
+    {!isIncome && <><label className="field">Bezahlt von<select required value={values.paidByPlayerId === undefined ? '' : values.paidByPlayerId === null ? 'treasury' : `player:${values.paidByPlayerId}`} onChange={event => {
+      const paidByPlayerId = event.target.value === 'treasury' ? null : event.target.value.slice('player:'.length);
+      setValues(current => ({ ...current, paidByPlayerId, reimbursementStatus: paidByPlayerId === null ? 'not_required' : current.paidByPlayerId === null ? 'open' : current.reimbursementStatus }));
+    }}>{values.paidByPlayerId === undefined && <option value="" disabled>Bitte zuordnen: {values.paidBy}</option>}<option value="treasury">Mannschaftskasse</option>{[...data.players].sort((first, second) => first.name.localeCompare(second.name, 'de-DE')).map(player => <option key={player.id} value={`player:${player.id}`}>{player.name}</option>)}</select></label>
+    {values.paidByPlayerId !== null && <label className="field">Erstattung<select value={values.reimbursementStatus} onChange={event => field('reimbursementStatus', event.target.value)}>{Object.entries(REIMBURSEMENT_STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
+    {values.paidByPlayerId !== null && values.reimbursementStatus === 'partial' && <label className="field">Bereits erstattet (€)<input inputMode="decimal" required maxLength={16} value={reimbursedAmount} onChange={event => setReimbursedAmount(event.target.value)} /></label>}</>}
     <label className="field">Notiz (optional)<textarea rows={3} maxLength={1000} value={values.note} onChange={event => field('note', event.target.value)} /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Abbrechen</button><button className="button primary"><Check size={17} />{expense ? 'Speichern' : isIncome ? 'Einnahme anlegen' : 'Ausgabe anlegen'}</button></div>
+  </form>;
+}
+
+export function ReimbursementForm({ data, expense, onSave, onClose }) {
+  const paidCents = expenseReimbursedCents(expense);
+  const remainingCents = expense.amountCents - paidCents;
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState('');
+  let amountCents = null;
+  try { amountCents = moneyCents(amount); } catch {}
+  const valid = amountCents > 0 && amountCents <= remainingCents;
+  const balanceAfter = treasuryTotals(data).balanceCents - (valid ? amountCents : 0);
+  return <form onSubmit={event => {
+    event.preventDefault();
+    try { onSave(reimburseExpense(data, expense.id, moneyCents(amount))); } catch (caught) { setError(caught.message); }
+  }}>
+    <div className="reimbursement-recipient"><span>Auszahlung an {expensePayer(data, expense)}</span><strong>{expense.description}</strong></div>
+    <dl className="reimbursement-metrics"><div><dt>Auslage</dt><dd>{euro(expense.amountCents)}</dd></div><div><dt>Bereits erstattet</dt><dd>{euro(paidCents)}</dd></div><div><dt>Noch offen</dt><dd>{euro(remainingCents)}</dd></div></dl>
+    <label className="field">Jetzt erstatten (€)<input autoFocus inputMode="decimal" required maxLength={16} placeholder="0,00" value={amount} aria-invalid={Boolean(amount) && !valid} aria-describedby="reimbursement-preview" onChange={event => { setAmount(event.target.value); setError(''); }} /></label>
+    <button type="button" className="text-button reimbursement-fill" onClick={() => setAmount((remainingCents / 100).toFixed(2).replace('.', ','))}>Restbetrag übernehmen · {euro(remainingCents)}</button>
+    <div id="reimbursement-preview" className="reimbursement-preview" aria-live="polite"><div><span>Danach noch offen</span><strong>{euro(remainingCents - (valid ? amountCents : 0))}</strong></div><div><span>Kassenbestand danach</span><strong>{euro(balanceAfter)}</strong></div></div>
+    {amount && !valid && <p className="form-error" role="alert">Bitte einen Betrag zwischen 0,01 € und {euro(remainingCents)} eingeben.</p>}
+    {valid && balanceAfter < 0 && <p className="form-error" role="status">Die Auszahlung führt zu einem negativen Kassenbestand.</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Abbrechen</button><button className="button primary" disabled={!valid}><Banknote size={17} />{valid ? `${euro(amountCents)} auszahlen` : 'Auszahlung buchen'}</button></div>
   </form>;
 }
 
@@ -101,7 +136,7 @@ export default function Expenses({ data, matchId, readOnly, onAdd, onEdit, onDel
     </div>
     <div className="expense-scroll"><table className="expense-table"><thead><tr><th>Datum</th><th>Beschreibung</th><th>Kategorie</th>{matchId === undefined && <th>Spieltag</th>}{!isIncome && <><th>Bezahlt von</th><th>Erstattung</th></>}<th>Betrag</th><th aria-label="Aktionen" /></tr></thead><tbody>{filtered.map(expense => {
       const match = data.matches.find(item => item.id === expense.matchId);
-      return <tr key={expense.id}><td className="expense-date">{dateLabel(expense.date)}</td><td className="expense-description"><strong>{expense.description}</strong>{expense.note && <small>{expense.note}</small>}</td><td>{categories[expense.category]}</td>{matchId === undefined && <td>{match ? `${match.id} · ${match.opponent}` : 'Ohne Spieltagsbezug'}</td>}{!isIncome && <><td>{expensePayer(data, expense)}</td><td><span className={`expense-status expense-status-${expense.reimbursementStatus}`}>{REIMBURSEMENT_STATUSES[expense.reimbursementStatus]}</span></td></>}<td className="expense-amount">{euro(expense.amountCents)}</td><td><div className="row-actions"><button className="icon-button" title="Buchungsverlauf" aria-label={`Verlauf von ${expense.description}`} onClick={() => onHistory(expense)}><History size={16} /></button><button className="icon-button" title={`${singular} bearbeiten`} aria-label={`${expense.description} bearbeiten`} disabled={readOnly} onClick={() => onEdit(expense)}><Pencil size={16} /></button><button className="icon-button danger-hover" title={`${singular} löschen`} aria-label={`${expense.description} löschen`} disabled={readOnly} onClick={() => onDelete(expense)}><Trash2 size={16} /></button></div></td></tr>;
+      return <tr key={expense.id}><td className="expense-date">{dateLabel(expense.date)}</td><td className="expense-description"><strong>{expense.description}</strong>{expense.note && <small>{expense.note}</small>}</td><td>{categories[expense.category]}</td>{matchId === undefined && <td>{match ? `${match.id} · ${match.opponent}` : 'Ohne Spieltagsbezug'}</td>}{!isIncome && <><td>{expensePayer(data, expense)}</td><td><span className={`expense-status expense-status-${expense.reimbursementStatus}`}>{REIMBURSEMENT_STATUSES[expense.reimbursementStatus]}</span>{expense.reimbursementStatus === 'partial' && <div className="reimbursement-progress"><small>{euro(expenseReimbursedCents(expense))} von {euro(expense.amountCents)}</small><progress max={expense.amountCents} value={expenseReimbursedCents(expense)} aria-label={`${expense.description}: bereits erstattet`} /><small>{euro(expense.amountCents - expenseReimbursedCents(expense))} offen</small></div>}</td></>}<td className="expense-amount">{euro(expense.amountCents)}</td><td><div className="row-actions">{!isIncome && ['open', 'partial'].includes(expense.reimbursementStatus) && data.players.some(player => player.id === expense.paidByPlayerId) && <button className="icon-button reimbursement-action" title="Aus Kasse erstatten" aria-label={`${expense.description} erstatten`} disabled={readOnly} onClick={() => onEdit(expense, 'reimburse')}><Banknote size={17} /></button>}<button className="icon-button" title="Buchungsverlauf" aria-label={`Verlauf von ${expense.description}`} onClick={() => onHistory(expense)}><History size={16} /></button><button className="icon-button" title={`${singular} bearbeiten`} aria-label={`${expense.description} bearbeiten`} disabled={readOnly} onClick={() => onEdit(expense)}><Pencil size={16} /></button><button className="icon-button danger-hover" title={`${singular} löschen`} aria-label={`${expense.description} löschen`} disabled={readOnly} onClick={() => onDelete(expense)}><Trash2 size={16} /></button></div></td></tr>;
     })}</tbody></table></div>
     {!filtered.length && <p className="empty-copy">{scoped.length ? `Keine passenden ${plural}.` : `Noch keine ${plural} erfasst.`}</p>}
   </section>;

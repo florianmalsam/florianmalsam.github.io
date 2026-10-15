@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, JOURNAL_ACTIONS, JOURNAL_KINDS, REIMBURSEMENT_STATUSES } from './model.js';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, JOURNAL_ACTIONS, JOURNAL_KINDS, REIMBURSEMENT_STATUSES, expenseReimbursedCents } from './model.js';
 
 const euro = cents => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 const timestamp = at => new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(at));
@@ -9,6 +9,8 @@ const delta = cents => `${cents > 0 ? '+' : ''}${euro(cents)}`;
 function eventTitle(entry) {
   if (entry.action === 'baseline') return 'Journal gestartet';
   if (entry.kind === 'expense' && entry.action === 'update') {
+    if (expenseReimbursedCents(entry.after) > expenseReimbursedCents(entry.before) && entry.after.reimbursementStatus === 'partial') return 'Auslage teilweise erstattet';
+    if (expenseReimbursedCents(entry.after) < expenseReimbursedCents(entry.before)) return 'Erstattung korrigiert';
     if (entry.before.reimbursementStatus !== 'reimbursed' && entry.after.reimbursementStatus === 'reimbursed') return 'Auslage erstattet';
     if (entry.before.reimbursementStatus === 'reimbursed' && entry.after.reimbursementStatus !== 'reimbursed') return 'Erstattung zurückgenommen';
   }
@@ -16,10 +18,10 @@ function eventTitle(entry) {
 }
 
 function ChangeDetails({ entry }) {
-  const fields = [['description', 'Beschreibung'], ['amountCents', entry.kind === 'treasury' ? 'Startbestand' : 'Betrag'], ['date', 'Buchungsdatum'], ['category', 'Kategorie'], ['matchId', 'Spieltag-ID'], ['matchName', 'Gegner'], ['paidByName', 'Bezahlt von'], ['reimbursementStatus', 'Erstattung'], ['note', 'Notiz']];
+  const fields = [['description', 'Beschreibung'], ['amountCents', entry.kind === 'treasury' ? 'Startbestand' : 'Betrag'], ['date', 'Buchungsdatum'], ['category', 'Kategorie'], ['matchId', 'Spieltag-ID'], ['matchName', 'Gegner'], ['paidByName', 'Bezahlt von'], ['reimbursementStatus', 'Erstattung'], ['reimbursedCents', 'Bereits erstattet'], ['note', 'Notiz']];
   function value(snapshot, field) {
     if (!snapshot || snapshot[field] === undefined || snapshot[field] === null || snapshot[field] === '') return '-';
-    if (field === 'amountCents') return euro(snapshot[field]);
+    if (field === 'amountCents' || field === 'reimbursedCents') return euro(snapshot[field]);
     if (field === 'category') return (entry.kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)[snapshot[field]];
     if (field === 'reimbursementStatus') return REIMBURSEMENT_STATUSES[snapshot[field]];
     return snapshot[field];
